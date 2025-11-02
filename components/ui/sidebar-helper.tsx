@@ -4,14 +4,19 @@ import { cn } from "@/lib/utils";
 import { HTMLAttributes, useState } from "react";
 import Sidebar from "./sidebar";
 import { Button } from "./button";
-import { SidebarClose, SidebarOpen } from "lucide-react";
-import { Avatar, AvatarImage } from "./avatar";
+import { CircleUserRound, SidebarClose, SidebarOpen } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
+import { useUser } from "@stackframe/stack";
+import { Popover, PopoverContent, PopoverTrigger } from "./popover";
+import Link from "next/link";
 
 export default function SidebarHelper({
   children,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
   const [isOpen, setIsOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const user = useUser();
 
   return (
     <div
@@ -37,14 +42,44 @@ export default function SidebarHelper({
         >
           {isOpen ? <SidebarClose /> : <SidebarOpen />}
         </Button>
-        <Avatar className="absolute right-4 bottom-4">
-          <div
-            aria-hidden="true"
-            className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse"
-          />
-        </Avatar>
+        <Popover
+          open={userMenuOpen}
+          onOpenChange={(newState) => user && setUserMenuOpen(newState)}
+        >
+          <PopoverTrigger asChild>
+            <Avatar className="absolute right-4 bottom-4">
+              <AvatarImage src={user?.profileImageUrl ?? undefined} />
+              <AvatarFallback>
+                <Link
+                  className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700"
+                  href="/handler/sign-in"
+                >
+                  <CircleUserRound className="w-8 h-8" />
+                </Link>
+              </AvatarFallback>
+            </Avatar>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="mb-1">
+            {user && (
+              <div className="p-2">
+                <h4 className="font-semibold">{user.displayName}</h4>
+                <p className="text-sm text-muted-foreground">
+                  {user.primaryEmail}
+                </p>
+                <Button className="w-full mt-2" asChild>
+                  <Link
+                    href="/handler/sign-out"
+                    className="text-sm text-muted-foreground"
+                  >
+                    Sign out
+                  </Link>
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
       </div>
-      <main>{children}</main>
+      <main className="flex-1">{children}</main>
     </div>
   );
 }
