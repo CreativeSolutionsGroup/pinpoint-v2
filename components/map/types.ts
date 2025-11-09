@@ -22,9 +22,23 @@ export interface IconType {
   color?: string;
 }
 
+export type ConnectorStyle = "solid" | "dashed" | "dotted";
+
+export interface Connector {
+  id: string;
+  startIconId: string;
+  endIconId: string;
+  color?: string;
+  width?: number; // Line width in pixels (default 2)
+  style?: ConnectorStyle; // Line style (default "solid")
+  label?: string;
+  description?: string;
+}
+
 export interface MapData {
   id: string;
   name: string;
   imageUrl: string;
   icons: MapIcon[];
+  connectors?: Connector[];
 }

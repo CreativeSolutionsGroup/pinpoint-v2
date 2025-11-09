@@ -11,9 +11,27 @@ interface MapIconProps {
   onMoveComplete?: (id: string, position: { x: number; y: number }) => void;
   onUpdate: (id: string, updates: Partial<MapIconType>) => void;
   onDelete: (id: string) => void;
+  onCopy?: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  onClick?: (iconId: string) => void;
+  isConnectMode?: boolean;
+  isConnectStart?: boolean;
+  isSelected?: boolean;
 }
 
-export function MapIcon({ icon, onMove, onMoveComplete, onUpdate, onDelete }: MapIconProps) {
+export function MapIcon({ 
+  icon, 
+  onMove, 
+  onMoveComplete, 
+  onUpdate, 
+  onDelete,
+  onCopy,
+  onDuplicate,
+  onClick,
+  isConnectMode = false,
+  isConnectStart = false,
+  isSelected = false,
+}: MapIconProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -24,6 +42,14 @@ export function MapIcon({ icon, onMove, onMoveComplete, onUpdate, onDelete }: Ma
   const currentRotation = icon.rotation || 0;
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // In connect mode, handle clicks instead of dragging
+    if (isConnectMode) {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick?.(icon.id);
+      return;
+    }
+
     // Only drag icon with left mouse button and no modifier keys
     if (e.button !== 0 || e.shiftKey) {
       return;
@@ -85,7 +111,9 @@ export function MapIcon({ icon, onMove, onMoveComplete, onUpdate, onDelete }: Ma
 
   return (
     <div
-      className="absolute cursor-move group map-icon-container"
+      className={`absolute group map-icon-container ${
+        isConnectMode ? "cursor-pointer" : "cursor-move"
+      }`}
       style={{
         left: `${icon.position.x}%`,
         top: `${icon.position.y}%`,
@@ -96,21 +124,27 @@ export function MapIcon({ icon, onMove, onMoveComplete, onUpdate, onDelete }: Ma
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="relative flex flex-col items-center">
-        {/* Circular icon with scaling and rotation */}
+        {/* Icon with scaling and rotation */}
         <div
           className={`relative transition-all ${
             isDragging ? "opacity-75 scale-110" : ""
-          }`}
+          } ${isConnectStart ? "animate-pulse" : ""}`}
           style={{
             transform: `scale(${currentSize}) rotate(${currentRotation}deg)`,
             transformOrigin: "center center",
           }}
         >
           <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-lg border-2 border-white"
-            style={{ backgroundColor: icon.color || "#3b82f6" }}
+            className={`flex items-center justify-center ${
+              isConnectStart ? "ring-4 ring-primary ring-offset-2" : ""
+            } ${isConnectMode && isHovered ? "ring-2 ring-primary ring-offset-1" : ""} ${isSelected ? "ring-4 ring-blue-400/50 ring-offset-2" : ""} rounded-full`}
           >
-            {IconComponent && <IconComponent className="w-4 h-4" />}
+            {IconComponent && (
+              <IconComponent 
+                className="w-8 h-8 drop-shadow-lg" 
+                style={{ color: icon.color || "#3b82f6", strokeWidth: 1.5 }}
+              />
+            )}
           </div>
         </div>
         
@@ -124,11 +158,13 @@ export function MapIcon({ icon, onMove, onMoveComplete, onUpdate, onDelete }: Ma
       </div>
       
       {/* Menu button positioned outside all transforms, at top-right of where circular icon appears */}
-      {(isHovered || isMenuOpen) && !isDragging && (
+      {(isHovered || isMenuOpen) && !isDragging && !isConnectMode && (
         <IconEditMenu
           icon={icon}
           onUpdate={(updates) => onUpdate(icon.id, updates)}
           onDelete={() => onDelete(icon.id)}
+          onCopy={() => onCopy?.(icon.id)}
+          onDuplicate={() => onDuplicate?.(icon.id)}
           onOpenChange={setIsMenuOpen}
         />
       )}

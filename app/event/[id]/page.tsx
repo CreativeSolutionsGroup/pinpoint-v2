@@ -4,40 +4,67 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabsContent } from "@radix-ui/react-tabs";
-import { Plus, Redo, Search, Undo, Pencil, Check } from "lucide-react";
+import { Plus, Search, Pencil, Check } from "lucide-react";
 import { MapEditor } from "@/components/map";
-import type { MapIconType } from "@/components/map";
+import type { MapIconType, Connector } from "@/components/map";
 import { useState } from "react";
+
+interface MapState {
+  icons: MapIconType[];
+  connectors: Connector[];
+}
 
 export default function EventPage() {
   const [eventName, setEventName] = useState("Placeholder Event Name");
   const [isEditingName, setIsEditingName] = useState(false);
   const [map1Icons, setMap1Icons] = useState<MapIconType[]>([]);
   const [map2Icons, setMap2Icons] = useState<MapIconType[]>([]);
-  const [history, setHistory] = useState<MapIconType[][]>([[]]);
+  const [map1Connectors, setMap1Connectors] = useState<Connector[]>([]);
+  const [map2Connectors, setMap2Connectors] = useState<Connector[]>([]);
+  const [history, setHistory] = useState<MapState[]>([{ icons: [], connectors: [] }]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [activeTab, setActiveTab] = useState("location-1");
 
   const setCurrentIcons = activeTab === "location-1" ? setMap1Icons : setMap2Icons;
+  const setCurrentConnectors = activeTab === "location-1" ? setMap1Connectors : setMap2Connectors;
+  const currentIcons = activeTab === "location-1" ? map1Icons : map2Icons;
+  const currentConnectors = activeTab === "location-1" ? map1Connectors : map2Connectors;
 
   // Live update handler - updates display but doesn't add to history
   const handleIconsChange = (newIcons: MapIconType[]) => {
     setCurrentIcons(newIcons);
   };
 
-  // Move complete handler - adds to history only when icon is dropped
+  const handleConnectorsChange = (newConnectors: Connector[]) => {
+    setCurrentConnectors(newConnectors);
+  };
+
+  // Move complete handler - adds to history only when icon is dropped or moved
   const handleIconMoveComplete = (newIcons: MapIconType[]) => {
-    // Only add to history if the icons actually changed
+    const newState: MapState = { icons: newIcons, connectors: currentConnectors };
+    saveToHistory(newState);
+  };
+
+  // Connector complete handler - adds to history when connector is added/edited/deleted
+  const handleConnectorMoveComplete = (newConnectors: Connector[]) => {
+    const newState: MapState = { icons: currentIcons, connectors: newConnectors };
+    saveToHistory(newState);
+  };
+
+  const saveToHistory = (newState: MapState) => {
+    // Only add to history if the state actually changed
     const currentState = history[historyIndex];
-    if (JSON.stringify(currentState) === JSON.stringify(newIcons)) {
+    if (JSON.stringify(currentState) === JSON.stringify(newState)) {
       return;
     }
 
-    setCurrentIcons(newIcons);
+    setCurrentIcons(newState.icons);
+    setCurrentConnectors(newState.connectors);
+    
     // Add to history for undo/redo
     const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(newIcons);
+    newHistory.push(newState);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   };
@@ -46,7 +73,9 @@ export default function EventPage() {
     if (historyIndex > 0) {
       const newIndex = historyIndex - 1;
       setHistoryIndex(newIndex);
-      setCurrentIcons(history[newIndex]);
+      const state = history[newIndex];
+      setCurrentIcons(state.icons);
+      setCurrentConnectors(state.connectors);
       setForceUpdate(prev => prev + 1); // Force re-render
     }
   };
@@ -55,7 +84,9 @@ export default function EventPage() {
     if (historyIndex < history.length - 1) {
       const newIndex = historyIndex + 1;
       setHistoryIndex(newIndex);
-      setCurrentIcons(history[newIndex]);
+      const state = history[newIndex];
+      setCurrentIcons(state.icons);
+      setCurrentConnectors(state.connectors);
       setForceUpdate(prev => prev + 1); // Force re-render
     }
   };
@@ -99,24 +130,6 @@ export default function EventPage() {
         >
           {isEditingName ? <Check className="h-3 w-3" /> : <Pencil className="h-3 w-3" />}
         </Button>
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="ml-auto h-8"
-          onClick={handleUndo}
-          disabled={historyIndex === 0}
-        >
-          <Undo className="h-4 w-4" />
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm"
-          className="ml-2 h-8"
-          onClick={handleRedo}
-          disabled={historyIndex === history.length - 1}
-        >
-          <Redo className="h-4 w-4" />
-        </Button>
       </div>
       <div className="flex-1 flex flex-col border shadow-md rounded-md p-2 mt-2 min-h-0 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full gap-2">
@@ -126,8 +139,15 @@ export default function EventPage() {
                 key={`map-1-${forceUpdate}`}
                 mapImageUrl="https://placehold.co/1200x800/1e293b/94a3b8?text=Campus+Map+1"
                 initialIcons={map1Icons}
+                initialConnectors={map1Connectors}
                 onIconsChange={handleIconsChange}
+                onConnectorsChange={handleConnectorsChange}
                 onIconMoveComplete={handleIconMoveComplete}
+                onConnectorMoveComplete={handleConnectorMoveComplete}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                canUndo={historyIndex > 0}
+                canRedo={historyIndex < history.length - 1}
               />
             </TabsContent>
             <TabsContent value="location-2" className="h-full mt-0">
@@ -135,8 +155,15 @@ export default function EventPage() {
                 key={`map-2-${forceUpdate}`}
                 mapImageUrl="https://placehold.co/1200x800/1e293b/94a3b8?text=Campus+Map+2"
                 initialIcons={map2Icons}
+                initialConnectors={map2Connectors}
                 onIconsChange={handleIconsChange}
+                onConnectorsChange={handleConnectorsChange}
                 onIconMoveComplete={handleIconMoveComplete}
+                onConnectorMoveComplete={handleConnectorMoveComplete}
+                onUndo={handleUndo}
+                onRedo={handleRedo}
+                canUndo={historyIndex > 0}
+                canRedo={historyIndex < history.length - 1}
               />
             </TabsContent>
             <TabsContent value="add-event" className="h-full mt-0">

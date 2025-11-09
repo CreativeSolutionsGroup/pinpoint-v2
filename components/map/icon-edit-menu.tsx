@@ -5,13 +5,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Settings, Trash2, Minus, Plus, RotateCw, RotateCcw } from "lucide-react";
+import { Settings, Trash2, Minus, Plus, RotateCw, RotateCcw, Copy, CopyPlus } from "lucide-react";
 import { MapIcon } from "./types";
 
 interface IconEditMenuProps {
   icon: MapIcon;
   onUpdate: (updates: Partial<MapIcon>) => void;
   onDelete: () => void;
+  onCopy?: () => void;
+  onDuplicate?: () => void;
   onOpenChange?: (open: boolean) => void;
 }
 
@@ -26,7 +28,7 @@ const COLOR_PRESETS = [
   { name: "Gray", value: "#6b7280" },
 ];
 
-export function IconEditMenu({ icon, onUpdate, onDelete, onOpenChange }: IconEditMenuProps) {
+export function IconEditMenu({ icon, onUpdate, onDelete, onCopy, onDuplicate, onOpenChange }: IconEditMenuProps) {
   const [open, setOpen] = useState(false);
   const currentColor = icon.color || "#3b82f6";
   const currentSize = icon.size || 1;
@@ -204,8 +206,40 @@ export function IconEditMenu({ icon, onUpdate, onDelete, onOpenChange }: IconEdi
               </div>
             </div>
 
-            {/* Delete Button */}
+            {/* Copy and Duplicate Buttons */}
             <div className="pt-1.5 border-t">
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-8"
+                  onClick={() => {
+                    onCopy?.();
+                    setOpen(false);
+                    onOpenChange?.(false);
+                  }}
+                >
+                  <Copy className="h-3 w-3 mr-1.5" />
+                  Copy
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-8"
+                  onClick={() => {
+                    onDuplicate?.();
+                    setOpen(false);
+                    onOpenChange?.(false);
+                  }}
+                >
+                  <CopyPlus className="h-3 w-3 mr-1.5" />
+                  Duplicate
+                </Button>
+              </div>
+            </div>
+
+            {/* Delete Button */}
+            <div className="pt-1">
               <Button
                 variant="destructive"
                 size="sm"
