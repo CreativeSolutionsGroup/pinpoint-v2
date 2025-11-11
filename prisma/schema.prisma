@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
@@ -12,4 +6,42 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model Diagram {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  imageUrl    String
+  imageWidth  Float
+  imageHeight Float
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  userId      String
+  eventId     String?
+  items       DiagramItem[]
+
+  @@index([userId])
+  @@index([eventId])
+}
+
+model DiagramItem {
+  id          String   @id @default(cuid())
+  diagramId   String
+  iconType    String
+  name        String
+  description String?
+  x           Float
+  y           Float
+  width       Float
+  height      Float
+  rotation    Float    @default(0)
+  color       String   @default("#000000")
+  opacity     Float    @default(1.0)
+  zIndex      Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  diagram     Diagram  @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+
+  @@index([diagramId])
 }
