@@ -13,6 +13,15 @@ export interface MapIcon {
   rotation?: number; // 0-360 degrees
   size?: number; // 1-3 scale multiplier (default 1)
   description?: string; // Optional description/notes
+  layer?: string; // Layer name (default "default")
+}
+
+export interface Layer {
+  id: string;
+  name: string;
+  visible: boolean;
+  locked: boolean;
+  color?: string; // Optional color indicator
 }
 
 export interface IconType {

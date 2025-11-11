@@ -14,6 +14,7 @@ interface MapIconProps {
   onCopy?: (id: string) => void;
   onDuplicate?: (id: string) => void;
   onClick?: (iconId: string) => void;
+  onDragStart?: (id: string) => void;
   isConnectMode?: boolean;
   isConnectStart?: boolean;
   isSelected?: boolean;
@@ -28,6 +29,7 @@ export function MapIcon({
   onCopy,
   onDuplicate,
   onClick,
+  onDragStart,
   isConnectMode = false,
   isConnectStart = false,
   isSelected = false,
@@ -61,6 +63,10 @@ export function MapIcon({
       x: e.clientX - iconElement.left - iconElement.width / 2,
       y: e.clientY - iconElement.top - iconElement.height / 2,
     };
+    
+    // Notify that drag is starting (for group drag tracking)
+    onDragStart?.(icon.id);
+    
     setIsDragging(true);
   };
 

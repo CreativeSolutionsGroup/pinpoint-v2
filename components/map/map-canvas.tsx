@@ -3,15 +3,23 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { MapIcon as MapIconComponent } from "./map-icon";
 import { MapConnector } from "./map-connector";
-import { MapIcon as MapIconType, IconType, Connector } from "./types";
-import { ZoomIn, ZoomOut, Maximize2, Link, Undo, Redo } from "lucide-react";
+import { MapIcon as MapIconType, IconType, Connector, Layer } from "./types";
+import { 
+  ZoomIn, ZoomOut, Maximize2, Link, Undo, Redo, Grid3x3, Printer,
+  AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
+  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
+  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { KeyboardShortcutsPanel } from "./keyboard-shortcuts-panel";
+import { PrintDialog } from "./print-dialog";
 
 interface MapCanvasProps {
   mapImageUrl: string;
   icons: MapIconType[];
   connectors?: Connector[];
+  layers?: Layer[];
   onIconsChange: (icons: MapIconType[]) => void;
   onConnectorsChange?: (connectors: Connector[]) => void;
   onIconMoveComplete?: (icons: MapIconType[]) => void;
@@ -27,6 +35,7 @@ export function MapCanvas({
   mapImageUrl,
   icons,
   connectors = [],
+  layers = [],
   onIconsChange,
   onConnectorsChange,
   onIconMoveComplete,
@@ -37,6 +46,19 @@ export function MapCanvas({
   canUndo = false,
   canRedo = false,
 }: MapCanvasProps) {
+  // Filter icons based on layer visibility
+  const visibleLayers = new Set(layers.filter(l => l.visible).map(l => l.id));
+  const visibleIcons = icons.filter(icon => {
+    const iconLayer = icon.layer || "default";
+    return visibleLayers.has(iconLayer) || visibleLayers.size === 0;
+  });
+  
+  // Check if icon's layer is locked
+  const lockedLayers = new Set(layers.filter(l => l.locked).map(l => l.id));
+  const isIconLocked = (icon: MapIconType) => {
+    const iconLayer = icon.layer || "default";
+    return lockedLayers.has(iconLayer);
+  };
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -50,8 +72,14 @@ export function MapCanvas({
   const [selectionStart, setSelectionStart] = useState({ x: 0, y: 0 });
   const [selectionEnd, setSelectionEnd] = useState({ x: 0, y: 0 });
   const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 }); // Track mouse position as percentage
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showGrid, setShowGrid] = useState(false);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
+  const gridSize = 5; // 5% grid spacing
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev + 0.25, 3));
@@ -219,18 +247,111 @@ export function MapCanvas({
     }
   };
 
+    // Helper function to snap position to grid
+  const snapPosition = (position: { x: number; y: number }) => {
+    if (!snapToGrid) return position;
+    return {
+      x: Math.round(position.x / gridSize) * gridSize,
+      y: Math.round(position.y / gridSize) * gridSize,
+    };
+  };
+
+  const handleIconDragStart = (id: string) => {
+    // Store initial positions for all selected icons when drag starts
+    if (selectedIconIds.has(id) && selectedIconIds.size > 1) {
+      // Store positions for all selected icons
+      const positions = new Map<string, { x: number; y: number }>();
+      icons.forEach(icon => {
+        if (selectedIconIds.has(icon.id)) {
+          positions.set(icon.id, { x: icon.position.x, y: icon.position.y });
+        }
+      });
+      dragStartPositions.current = positions;
+    } else {
+      // Store position for single icon
+      const icon = icons.find(i => i.id === id);
+      if (icon) {
+        dragStartPositions.current = new Map([[id, { x: icon.position.x, y: icon.position.y }]]);
+      }
+    }
+  };
+
   const handleIconMove = (id: string, position: { x: number; y: number }) => {
-    const updatedIcons = icons.map((icon) =>
-      icon.id === id ? { ...icon, position } : icon
-    );
-    onIconsChange(updatedIcons);
+    // If the icon being moved is part of a selection, move all selected icons
+    if (selectedIconIds.has(id) && selectedIconIds.size > 1) {
+      const startPos = dragStartPositions.current.get(id);
+      if (!startPos) return;
+      
+      // Calculate the delta from the dragged icon's start position
+      const deltaX = position.x - startPos.x;
+      const deltaY = position.y - startPos.y;
+      
+      // Move all selected icons by the same delta
+      const updatedIcons = icons.map((icon) => {
+        if (selectedIconIds.has(icon.id)) {
+          const iconStartPos = dragStartPositions.current.get(icon.id);
+          if (iconStartPos) {
+            return {
+              ...icon,
+              position: {
+                x: Math.max(0, Math.min(100, iconStartPos.x + deltaX)),
+                y: Math.max(0, Math.min(100, iconStartPos.y + deltaY)),
+              }
+            };
+          }
+        }
+        return icon;
+      });
+      onIconsChange(updatedIcons);
+    } else {
+      // Single icon movement
+      const updatedIcons = icons.map((icon) =>
+        icon.id === id ? { ...icon, position } : icon
+      );
+      onIconsChange(updatedIcons);
+    }
   };
 
   const handleIconMoveComplete = (id: string, position: { x: number; y: number }) => {
-    const updatedIcons = icons.map((icon) =>
-      icon.id === id ? { ...icon, position } : icon
-    );
-    onIconMoveComplete?.(updatedIcons);
+    // Snap to grid if enabled
+    const snappedPosition = snapPosition(position);
+    
+    // If the icon being moved is part of a selection, complete move for all selected icons
+    if (selectedIconIds.has(id) && selectedIconIds.size > 1) {
+      const startPos = dragStartPositions.current.get(id);
+      if (!startPos) return;
+      
+      // Calculate the delta from the dragged icon's start position (using snapped position)
+      const deltaX = snappedPosition.x - startPos.x;
+      const deltaY = snappedPosition.y - startPos.y;
+      
+      // Move all selected icons by the same delta
+      const updatedIcons = icons.map((icon) => {
+        if (selectedIconIds.has(icon.id)) {
+          const iconStartPos = dragStartPositions.current.get(icon.id);
+          if (iconStartPos) {
+            const newPos = {
+              x: Math.max(0, Math.min(100, iconStartPos.x + deltaX)),
+              y: Math.max(0, Math.min(100, iconStartPos.y + deltaY)),
+            };
+            return {
+              ...icon,
+              position: snapPosition(newPos)
+            };
+          }
+        }
+        return icon;
+      });
+      onIconMoveComplete?.(updatedIcons);
+      dragStartPositions.current.clear(); // Clear after move complete
+    } else {
+      // Single icon movement
+      const updatedIcons = icons.map((icon) =>
+        icon.id === id ? { ...icon, position: snappedPosition } : icon
+      );
+      onIconMoveComplete?.(updatedIcons);
+      dragStartPositions.current.clear(); // Clear after move complete
+    }
   };
 
   const handleIconUpdate = (id: string, updates: Partial<MapIconType>) => {
@@ -415,22 +536,132 @@ export function MapCanvas({
     toast.success(`${selectedIcons.length} icon${selectedIcons.length !== 1 ? 's' : ''} copied`);
   }, [selectedIconIds, icons]);
 
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIconIds.size === 0) return;
+    
+    // Delete all selected icons
+    const updatedIcons = icons.filter(icon => !selectedIconIds.has(icon.id));
+    
+    // Also delete any connectors attached to the deleted icons
+    const updatedConnectors = connectors.filter(
+      connector => !selectedIconIds.has(connector.startIconId) && !selectedIconIds.has(connector.endIconId)
+    );
+    
+    onIconsChange(updatedIcons);
+    onIconMoveComplete?.(updatedIcons); // Save to history
+    
+    if (onConnectorsChange && onConnectorMoveComplete) {
+      onConnectorsChange(updatedConnectors);
+      onConnectorMoveComplete(updatedConnectors); // Save to history
+    }
+    
+    const count = selectedIconIds.size;
+    setSelectedIconIds(new Set());
+    toast.success(`${count} icon${count !== 1 ? 's' : ''} deleted`);
+  }, [selectedIconIds, icons, connectors, onIconsChange, onIconMoveComplete, onConnectorsChange, onConnectorMoveComplete]);
+
+  // Alignment functions
+  const handleAlign = useCallback((direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+    if (selectedIconIds.size < 2) {
+      toast.error("Select at least 2 icons to align");
+      return;
+    }
+
+    const selectedIcons = icons.filter(icon => selectedIconIds.has(icon.id));
+    
+    let updatedIcons = [...icons];
+    
+    if (direction === 'left') {
+      const minX = Math.min(...selectedIcons.map(icon => icon.position.x));
+      updatedIcons = icons.map(icon =>
+        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, x: minX } } : icon
+      );
+    } else if (direction === 'center') {
+      const avgX = selectedIcons.reduce((sum, icon) => sum + icon.position.x, 0) / selectedIcons.length;
+      updatedIcons = icons.map(icon =>
+        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, x: avgX } } : icon
+      );
+    } else if (direction === 'right') {
+      const maxX = Math.max(...selectedIcons.map(icon => icon.position.x));
+      updatedIcons = icons.map(icon =>
+        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, x: maxX } } : icon
+      );
+    } else if (direction === 'top') {
+      const minY = Math.min(...selectedIcons.map(icon => icon.position.y));
+      updatedIcons = icons.map(icon =>
+        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, y: minY } } : icon
+      );
+    } else if (direction === 'middle') {
+      const avgY = selectedIcons.reduce((sum, icon) => sum + icon.position.y, 0) / selectedIcons.length;
+      updatedIcons = icons.map(icon =>
+        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, y: avgY } } : icon
+      );
+    } else if (direction === 'bottom') {
+      const maxY = Math.max(...selectedIcons.map(icon => icon.position.y));
+      updatedIcons = icons.map(icon =>
+        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, y: maxY } } : icon
+      );
+    }
+
+    onIconsChange(updatedIcons);
+    onIconMoveComplete?.(updatedIcons);
+    toast.success(`Aligned ${selectedIconIds.size} icons`);
+  }, [selectedIconIds, icons, onIconsChange, onIconMoveComplete]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+      // Ignore keypresses when typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Show keyboard shortcuts panel (use / instead of ? to avoid shift conflict)
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        e.preventDefault();
+        setShowShortcuts(true);
+      } else if (e.key === 'Shift' && !isConnectMode) {
+        // Enter connect mode when shift is pressed
+        setIsConnectMode(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        onUndo?.();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+        e.preventDefault();
+        onRedo?.();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
         e.preventDefault();
         handleCopy();
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
         handlePaste();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        handleDeleteSelected();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      // Ignore keypresses when typing in an input field
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Exit connect mode when shift is released
+      if (e.key === 'Shift' && isConnectMode) {
+        setIsConnectMode(false);
+        setConnectStartIconId(null); // Clear any in-progress connection
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
-  }, [handleCopy, handlePaste]);
+  }, [handleCopy, handlePaste, handleDeleteSelected, onUndo, onRedo, isConnectMode]);
 
   // Handle panning and selecting with mouse
   useEffect(() => {
@@ -446,7 +677,7 @@ export function MapCanvas({
   }, [isPanning, isSelecting, handlePanMove, handlePanEnd]);
 
   return (
-    <div className="relative w-full h-full bg-muted rounded-lg overflow-hidden">
+    <div id="map-canvas-print" className="relative w-full h-full bg-muted rounded-lg overflow-hidden">
       {/* Controls */}
       <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 items-end">
         {/* Undo/Redo Controls - Horizontal row at top */}
@@ -515,11 +746,104 @@ export function MapCanvas({
         >
           <Maximize2 className="h-3.5 w-3.5" />
         </Button>
+        <Button
+          variant="secondary"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => setShowPrintDialog(true)}
+          title="Print Map"
+        >
+          <Printer className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* Zoom indicator */}
       <div className="absolute top-2 left-2 z-10 bg-secondary px-2 py-1 rounded text-xs font-medium">
         {Math.round(zoom * 100)}%
+      </div>
+
+      {/* Grid and Alignment Controls */}
+      <div className="absolute top-12 left-2 z-10 flex flex-col gap-1">
+        {/* Grid Toggle */}
+        <Button
+          variant={showGrid ? "default" : "secondary"}
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => setShowGrid(!showGrid)}
+          title="Toggle Grid"
+        >
+          <Grid3x3 className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          variant={snapToGrid ? "default" : "secondary"}
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => setSnapToGrid(!snapToGrid)}
+          title="Snap to Grid"
+        >
+          <AlignHorizontalSpaceAround className="h-3.5 w-3.5" />
+        </Button>
+
+        {/* Alignment Tools - only show when multiple icons selected */}
+        {selectedIconIds.size >= 2 && (
+          <>
+            <div className="h-px bg-border my-1" />
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAlign('left')}
+              title="Align Left"
+            >
+              <AlignStartHorizontal className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAlign('center')}
+              title="Align Center"
+            >
+              <AlignCenterHorizontal className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAlign('right')}
+              title="Align Right"
+            >
+              <AlignEndHorizontal className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAlign('top')}
+              title="Align Top"
+            >
+              <AlignStartVertical className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAlign('middle')}
+              title="Align Middle"
+            >
+              <AlignCenterVertical className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="secondary"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => handleAlign('bottom')}
+              title="Align Bottom"
+            >
+              <AlignEndVertical className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
       </div>
 
       {/* Canvas */}
@@ -564,6 +888,34 @@ export function MapCanvas({
             draggable={false}
           />
 
+          {/* Grid Overlay */}
+          {showGrid && (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              style={{ zIndex: 1 }}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <pattern
+                  id="grid-pattern"
+                  width={gridSize}
+                  height={gridSize}
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d={`M ${gridSize} 0 L 0 0 0 ${gridSize}`}
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="0.1"
+                    className="text-muted-foreground/30"
+                  />
+                </pattern>
+              </defs>
+              <rect width="100" height="100" fill="url(#grid-pattern)" />
+            </svg>
+          )}
+
           {/* Connectors Layer - SVG overlay */}
           <svg
             className="absolute inset-0 w-full h-full pointer-events-none"
@@ -588,22 +940,26 @@ export function MapCanvas({
           </svg>
 
           {/* Placed Icons */}
-          {icons.map((icon) => (
-            <MapIconComponent
-              key={icon.id}
-              icon={icon}
-              onMove={handleIconMove}
-              onMoveComplete={handleIconMoveComplete}
-              onUpdate={handleIconUpdate}
-              onDelete={handleIconDelete}
-              onCopy={handleIconCopy}
-              onDuplicate={handleIconDuplicate}
-              onClick={handleIconClick}
-              isConnectMode={isConnectMode}
-              isConnectStart={connectStartIconId === icon.id}
-              isSelected={selectedIconIds.has(icon.id)}
-            />
-          ))}
+          {visibleIcons.map((icon) => {
+            const locked = isIconLocked(icon);
+            return (
+              <MapIconComponent
+                key={icon.id}
+                icon={icon}
+                onMove={locked ? () => {} : handleIconMove}
+                onMoveComplete={locked ? () => {} : handleIconMoveComplete}
+                onUpdate={locked ? () => {} : handleIconUpdate}
+                onDelete={locked ? () => {} : handleIconDelete}
+                onCopy={handleIconCopy}
+                onDuplicate={locked ? () => {} : handleIconDuplicate}
+                onClick={handleIconClick}
+                onDragStart={locked ? () => {} : handleIconDragStart}
+                isConnectMode={isConnectMode}
+                isConnectStart={connectStartIconId === icon.id}
+                isSelected={selectedIconIds.has(icon.id)}
+              />
+            );
+          })}
         </div>
       </div>
 
@@ -617,9 +973,21 @@ export function MapCanvas({
             }
           </>
         ) : (
-          "Drag icons to add • Move icons • Ctrl+Drag to select • Ctrl+C/V to copy/paste • Drag map to pan • Scroll to zoom"
+          "Drag icons to add • Move icons • Ctrl+Drag to select • Ctrl+C/V to copy/paste • Press / for shortcuts"
         )}
       </div>
+
+      {/* Keyboard Shortcuts Panel */}
+      <KeyboardShortcutsPanel 
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+      />
+
+      {/* Print Dialog */}
+      <PrintDialog 
+        open={showPrintDialog}
+        onOpenChange={setShowPrintDialog}
+      />
     </div>
   );
 }

@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { MapCanvas } from "./map-canvas";
 import { IconPalette } from "./icon-palette";
-import { MapIcon, IconType, Connector } from "./types";
+import { LayersPanel } from "./layers-panel";
+import { MapIcon, IconType, Connector, Layer } from "./types";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { Download, Upload, ChevronLeft, ChevronRight } from "lucide-react";
 import { 
   Drama, Armchair, Utensils, Coffee, WashingMachine, 
   DoorOpen, DoorClosed, ParkingSquare, Info, Cross,
@@ -206,6 +210,74 @@ export function MapEditor({
 }: MapEditorProps) {
   const [icons, setIcons] = useState<MapIcon[]>(initialIcons);
   const [connectors, setConnectors] = useState<Connector[]>(initialConnectors);
+  const [layers, setLayers] = useState<Layer[]>([
+    { id: "default", name: "Default", visible: true, locked: false }
+  ]);
+  const [currentLayer, setCurrentLayer] = useState<string>("default");
+  const [showLayers, setShowLayers] = useState<boolean>(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const mapData = {
+      version: "1.0",
+      icons,
+      connectors,
+      exportedAt: new Date().toISOString(),
+    };
+
+    const blob = new Blob([JSON.stringify(mapData, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `map-${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Map exported successfully");
+  };
+
+  const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const mapData = JSON.parse(content);
+
+        if (!mapData.icons || !Array.isArray(mapData.icons)) {
+          throw new Error("Invalid map file format");
+        }
+
+        const updatedIcons = mapData.icons;
+        const updatedConnectors = mapData.connectors || [];
+
+        setIcons(updatedIcons);
+        setConnectors(updatedConnectors);
+        onIconsChange?.(updatedIcons);
+        onConnectorsChange?.(updatedConnectors);
+        onIconMoveComplete?.(updatedIcons);
+        if (onConnectorMoveComplete) {
+          onConnectorMoveComplete(updatedConnectors);
+        }
+
+        toast.success(`Imported ${updatedIcons.length} icons and ${updatedConnectors.length} connectors`);
+      } catch (error) {
+        toast.error("Failed to import map file");
+        console.error("Import error:", error);
+      }
+    };
+    reader.readAsText(file);
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   const handleAddIcon = (iconType: IconType, position: { x: number; y: number }) => {
     const newIcon: MapIcon = {
@@ -217,6 +289,7 @@ export function MapEditor({
       position,
       rotation: 0,
       size: 1,
+      layer: currentLayer, // Assign to current layer
     };
 
     const updatedIcons = [...icons, newIcon];
@@ -237,12 +310,46 @@ export function MapEditor({
 
   return (
     <div className="flex h-full gap-2">
-      {/* Icon Palette - Sidebar */}
-      <div className="w-56 border rounded-lg bg-card shrink-0">
-        <IconPalette icons={availableIconTypes} onIconSelect={(iconType) => {
-          // Add icon to center when clicked
-          handleAddIcon(iconType, { x: 50, y: 50 });
-        }} />
+      {/* Icon Palette - Left Sidebar */}
+      <div className="w-56 border rounded-lg bg-card shrink-0 flex flex-col">
+        {/* Export/Import buttons */}
+        <div className="p-2 border-b flex gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 h-8"
+            onClick={handleExport}
+            title="Export Map"
+          >
+            <Upload className="h-3.5 w-3.5 mr-1" />
+            Export
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 h-8"
+            onClick={() => fileInputRef.current?.click()}
+            title="Import Map"
+          >
+            <Download className="h-3.5 w-3.5 mr-1" />
+            Import
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImport}
+          />
+        </div>
+
+        {/* Icon Palette */}
+        <div className="flex-1 overflow-hidden">
+          <IconPalette icons={availableIconTypes} onIconSelect={(iconType) => {
+            // Add icon to center when clicked
+            handleAddIcon(iconType, { x: 50, y: 50 });
+          }} />
+        </div>
       </div>
 
       {/* Map Canvas - Main area */}
@@ -251,6 +358,7 @@ export function MapEditor({
           mapImageUrl={mapImageUrl}
           icons={icons}
           connectors={connectors}
+          layers={layers}
           onIconsChange={handleIconsChange}
           onConnectorsChange={handleConnectorsChange}
           onIconMoveComplete={onIconMoveComplete}
@@ -261,6 +369,38 @@ export function MapEditor({
           canUndo={canUndo}
           canRedo={canRedo}
         />
+      </div>
+
+      {/* Layers Panel - Right Sidebar (Collapsible) */}
+      <div className="border rounded-lg bg-card shrink-0 flex">
+        {/* Toggle button sidebar - always visible */}
+        <div className="w-12 flex flex-col items-center p-2 border-r">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => setShowLayers(!showLayers)}
+            title={showLayers ? "Hide Layers Panel" : "Show Layers Panel"}
+          >
+            {showLayers ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+
+        {/* Layers panel content (collapsible) */}
+        {showLayers && (
+          <div className="w-56">
+            <LayersPanel
+              layers={layers}
+              onLayersChange={setLayers}
+              currentLayer={currentLayer}
+              onCurrentLayerChange={setCurrentLayer}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
