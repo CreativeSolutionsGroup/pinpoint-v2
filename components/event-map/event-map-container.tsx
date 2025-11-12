@@ -6,14 +6,53 @@ import { IconLegend } from "./icon-legend";
 import { MapIcon, PlacedIcon, MapState } from "./types";
 
 const defaultIcons: MapIcon[] = [
+  // Main Venues & Structures
   { id: "1", type: "stage", label: "Stage", icon: "flag", color: "#ef4444" },
   { id: "2", type: "booth", label: "Booth", icon: "square", color: "#3b82f6" },
-  { id: "3", type: "entrance", label: "Entrance", icon: "navigation", color: "#10b981" },
-  { id: "4", type: "restroom", label: "Restroom", icon: "circle", color: "#8b5cf6" },
-  { id: "5", type: "food", label: "Food Stand", icon: "triangle", color: "#f59e0b" },
-  { id: "6", type: "info", label: "Info Point", icon: "pin", color: "#06b6d4" },
-  { id: "7", type: "parking", label: "Parking", icon: "square", color: "#6366f1" },
-  { id: "8", type: "landmark", label: "Landmark", icon: "star", color: "#ec4899" },
+  { id: "3", type: "entrance", label: "Entrance", icon: "door-open", color: "#10b981" },
+  { id: "4", type: "exit", label: "Exit", icon: "door-closed", color: "#dc2626" },
+  { id: "5", type: "emergency-exit", label: "Emergency Exit", icon: "emergency-exit", color: "#dc2626" },
+
+  // Food & Beverage
+  { id: "6", type: "food", label: "Food Stand", icon: "utensils", color: "#f59e0b" },
+  { id: "7", type: "bar", label: "Bar", icon: "wine", color: "#8b5cf6" },
+  { id: "8", type: "coffee", label: "Coffee", icon: "coffee", color: "#92400e" },
+
+  // Facilities
+  { id: "9", type: "restroom", label: "Restroom", icon: "circle", color: "#06b6d4" },
+  { id: "10", type: "accessible", label: "Accessible Restroom", icon: "accessible", color: "#2563eb" },
+  { id: "11", type: "baby-changing", label: "Baby Changing", icon: "baby-changing", color: "#ec4899" },
+
+  // Services
+  { id: "12", type: "info", label: "Information", icon: "info", color: "#06b6d4" },
+  { id: "13", type: "ticket-booth", label: "Ticket Booth", icon: "ticket-booth", color: "#7c3aed" },
+  { id: "14", type: "coat-check", label: "Coat Check", icon: "coat-check", color: "#64748b" },
+  { id: "15", type: "lost-found", label: "Lost & Found", icon: "lost-found", color: "#ea580c" },
+  { id: "16", type: "merchandise", label: "Merchandise", icon: "merchandise", color: "#059669" },
+
+  // Medical & Safety
+  { id: "17", type: "first-aid", label: "First Aid", icon: "first-aid", color: "#dc2626" },
+  { id: "18", type: "security", label: "Security", icon: "security", color: "#1e40af" },
+
+  // Technology & Utilities
+  { id: "19", type: "wifi", label: "WiFi Zone", icon: "wifi", color: "#0891b2" },
+  { id: "20", type: "charging", label: "Charging Station", icon: "charging-station", color: "#65a30d" },
+  { id: "21", type: "atm", label: "ATM", icon: "atm", color: "#15803d" },
+
+  // Special Areas
+  { id: "22", type: "vip", label: "VIP Area", icon: "vip", color: "#fbbf24" },
+  { id: "23", type: "meeting-point", label: "Meeting Point", icon: "meeting-point", color: "#f97316" },
+  { id: "24", type: "photo-booth", label: "Photo Booth", icon: "camera", color: "#a855f7" },
+  { id: "25", type: "seating", label: "Seating Area", icon: "seating", color: "#475569" },
+  { id: "26", type: "podium", label: "Podium", icon: "podium", color: "#be123c" },
+
+  // Transportation
+  { id: "27", type: "parking", label: "Parking", icon: "car", color: "#4b5563" },
+  { id: "28", type: "bike-parking", label: "Bike Parking", icon: "bike", color: "#14b8a6" },
+
+  // Miscellaneous
+  { id: "29", type: "landmark", label: "Landmark", icon: "star", color: "#ec4899" },
+  { id: "30", type: "map-pin", label: "Custom Point", icon: "map-pin", color: "#6366f1" },
 ];
 
 interface EventMapContainerProps {

@@ -4,16 +4,77 @@ import { useRef, useEffect, useState } from "react";
 import { MapState, MapIcon } from "./types";
 import { Button } from "@/components/ui/button";
 import { ZoomIn, ZoomOut, Maximize2, Trash2 } from "lucide-react";
-import { Pin, Flag, Circle, Triangle, Square, Star, Navigation } from "lucide-react";
+import {
+  Pin,
+  Flag,
+  Circle,
+  Square,
+  Star,
+  Info,
+  MapPin,
+  DoorOpen,
+  DoorClosed,
+  Utensils,
+  Wine,
+  Coffee,
+  Wifi,
+  Camera,
+  Car,
+  Bike,
+} from "lucide-react";
+import {
+  ATMIcon,
+  FirstAidIcon,
+  SecurityIcon,
+  ChargingStationIcon,
+  LostAndFoundIcon,
+  VIPIcon,
+  MeetingPointIcon,
+  SeatingIcon,
+  CoatCheckIcon,
+  TicketBoothIcon,
+  EmergencyExitIcon,
+  MerchandiseIcon,
+  PodiumIcon,
+  AccessibleIcon,
+  BabyChangingIcon,
+} from "./icons/custom-icons";
 
 const iconComponents = {
+  // Lucide React icons
   pin: Pin,
   flag: Flag,
   circle: Circle,
-  triangle: Triangle,
   square: Square,
   star: Star,
-  navigation: Navigation,
+  info: Info,
+  "map-pin": MapPin,
+  "door-open": DoorOpen,
+  "door-closed": DoorClosed,
+  utensils: Utensils,
+  wine: Wine,
+  coffee: Coffee,
+  wifi: Wifi,
+  camera: Camera,
+  car: Car,
+  bike: Bike,
+
+  // Custom icons
+  atm: ATMIcon,
+  "first-aid": FirstAidIcon,
+  security: SecurityIcon,
+  "charging-station": ChargingStationIcon,
+  "lost-found": LostAndFoundIcon,
+  vip: VIPIcon,
+  "meeting-point": MeetingPointIcon,
+  seating: SeatingIcon,
+  "coat-check": CoatCheckIcon,
+  "ticket-booth": TicketBoothIcon,
+  "emergency-exit": EmergencyExitIcon,
+  merchandise: MerchandiseIcon,
+  podium: PodiumIcon,
+  accessible: AccessibleIcon,
+  "baby-changing": BabyChangingIcon,
 };
 
 interface EventMapProps {
