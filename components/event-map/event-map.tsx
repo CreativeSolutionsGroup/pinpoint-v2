@@ -335,7 +335,7 @@ export function EventMap({
       })}
 
       {/* Map Controls */}
-      <div className="absolute top-4 right-4 flex flex-col gap-2">
+      <div className="absolute top-20 right-4 flex flex-col gap-2 z-20">
         <Button
           size="icon"
           variant="outline"
@@ -378,7 +378,7 @@ export function EventMap({
         if (!icon) return null;
 
         return (
-          <div className="absolute top-4 left-4 bg-white dark:bg-neutral-900 p-4 rounded-md shadow-lg border border-neutral-200 dark:border-neutral-800 w-64">
+          <div className="absolute top-4 left-4 bg-white dark:bg-neutral-900 p-4 rounded-md shadow-lg border border-neutral-200 dark:border-neutral-800 w-64 z-30">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
               Icon Properties
             </h3>
@@ -438,16 +438,16 @@ export function EventMap({
       })()}
 
       {/* Zoom indicator */}
-      <div className="absolute bottom-4 right-4 bg-white dark:bg-neutral-900 px-3 py-2 rounded-md shadow-md text-sm">
+      <div className="absolute bottom-4 right-4 bg-white dark:bg-neutral-900 px-3 py-2 rounded-md shadow-md text-sm z-10">
         <span className="text-neutral-600 dark:text-neutral-400">
           Zoom: {Math.round(mapState.zoom * 100)}%
         </span>
       </div>
 
-      {/* Instructions */}
-      <div className="absolute bottom-4 left-4 bg-white dark:bg-neutral-900 px-4 py-3 rounded-md shadow-md text-sm max-w-md">
+      {/* Instructions - moved to top-right to avoid overlap with floating tabs */}
+      <div className="absolute top-4 right-16 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm px-4 py-3 rounded-md shadow-md text-sm max-w-md border border-neutral-200 dark:border-neutral-800 z-10">
         <p className="text-neutral-600 dark:text-neutral-400">
-          <span className="font-semibold">Tip:</span> Drag icons from the sidebar to the map. Click and drag to pan. Scroll to zoom. {selectedIcon && "Select an icon to edit its properties."}
+          <span className="font-semibold">Tip:</span> Drag icons from the sidebar. Click & drag to pan. Scroll to zoom. {selectedIcon && "Edit properties in the panel."}
         </p>
       </div>
     </div>

@@ -188,7 +188,8 @@ export default function EventPage() {
 
   return (
     <div className="flex flex-col h-full py-2 pr-2">
-      <div className="min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center">
+      {/* Header */}
+      <div className="flex-shrink-0 min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center">
         <h1 className="text-xl">Event Mapping</h1>
         <Button
           variant="outline"
@@ -207,27 +208,17 @@ export default function EventPage() {
           <Redo />
         </Button>
       </div>
-      <div className="flex-1 flex flex-col border shadow-md rounded-md p-2 mt-2 overflow-hidden">
-        <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex flex-col h-full">
-          {/* Tabs at the top */}
-          <TabsList className="mb-2">
-            {locations.map((location, index) => (
-              <TabsTrigger key={index} value={`location-${index}`}>
-                {location.name}
-              </TabsTrigger>
-            ))}
-            <TabsTrigger value="add-location">
-              <Plus />
-            </TabsTrigger>
-          </TabsList>
 
-          {/* Tab Contents */}
+      {/* Main Content Area */}
+      <div className="flex-1 border shadow-md rounded-md mt-2 overflow-hidden relative flex flex-col min-h-0">
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex flex-col h-full">
+          {/* Tab Contents - takes full height */}
           {locations.map((location, index) => (
-            <TabsContent key={index} value={`location-${index}`} className="flex-1 m-0">
-              <div className="flex h-full">
+            <TabsContent key={index} value={`location-${index}`} className="flex-1 m-0 data-[state=active]:flex h-full">
+              <div className="flex h-full w-full">
                 {/* Icon Legend Sidebar */}
-                <div className="w-72 h-full border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col">
-                  <div className="p-4 pb-2">
+                <div className="w-72 h-full border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col flex-shrink-0">
+                  <div className="p-4 pb-2 flex-shrink-0">
                     <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
                       {location.name}
                     </h2>
@@ -235,13 +226,13 @@ export default function EventPage() {
                       Drag icons to map
                     </p>
                   </div>
-                  <div className="flex-1 overflow-y-auto px-4 pb-4">
+                  <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
                     <IconLegend icons={defaultIcons} />
                   </div>
                 </div>
 
                 {/* Map Area */}
-                <div className="flex-1 relative overflow-hidden">
+                <div className="flex-1 relative min-w-0 min-h-0">
                   <EventMap
                     mapState={location.mapState}
                     onIconDrop={handleIconDrop}
@@ -256,14 +247,26 @@ export default function EventPage() {
             </TabsContent>
           ))}
 
-          <TabsContent value="add-location" className="flex-1 m-0">
-            <div className="flex items-center justify-center h-full">
+          <TabsContent value="add-location" className="flex-1 m-0 data-[state=active]:flex h-full">
+            <div className="flex items-center justify-center h-full w-full">
               <Button onClick={handleAddLocation} size="lg">
                 <Plus className="mr-2" />
                 Create New Location
               </Button>
             </div>
           </TabsContent>
+
+          {/* Floating Tab Selector at Bottom Left */}
+          <TabsList className="absolute bottom-4 left-4 z-50 shadow-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm border border-neutral-200 dark:border-neutral-800">
+            {locations.map((location, index) => (
+              <TabsTrigger key={index} value={`location-${index}`}>
+                {location.name}
+              </TabsTrigger>
+            ))}
+            <TabsTrigger value="add-location">
+              <Plus />
+            </TabsTrigger>
+          </TabsList>
         </Tabs>
       </div>
     </div>
