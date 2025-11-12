@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { MapState, MapIcon, PlacedIcon } from "./types";
 import { Button } from "@/components/ui/button";
-import { ZoomIn, ZoomOut, Maximize2, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { ZoomIn, ZoomOut, Maximize2, Trash2, X, Copy } from "lucide-react";
 import {
   Pin,
   Flag,
@@ -88,6 +89,7 @@ interface EventMapProps {
   onPan: (deltaX: number, deltaY: number) => void;
   onFullscreen?: () => void;
   isFullscreen?: boolean;
+  onMapStateUpdate?: (updates: Partial<MapState>) => void;
 }
 
 export function EventMap({
@@ -101,6 +103,7 @@ export function EventMap({
   onPan,
   onFullscreen,
   isFullscreen,
+  onMapStateUpdate,
 }: EventMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -110,6 +113,24 @@ export function EventMap({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [hoveredIcon, setHoveredIcon] = useState<string | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string | null>(null);
+  const [selectedIcons, setSelectedIcons] = useState<Set<string>>(new Set());
+  const [backgroundImageLoaded, setBackgroundImageLoaded] = useState<HTMLImageElement | null>(null);
+  const [clipboard, setClipboard] = useState<PlacedIcon | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null);
+
+  // Load background image when it changes
+  useEffect(() => {
+    if (mapState.backgroundImage) {
+      const img = document.createElement('img') as HTMLImageElement;
+      img.onload = () => setBackgroundImageLoaded(img);
+      img.onerror = () => setBackgroundImageLoaded(null);
+      img.src = mapState.backgroundImage;
+    } else {
+      setBackgroundImageLoaded(null);
+    }
+  }, [mapState.backgroundImage]);
 
   // Draw the canvas
   useEffect(() => {
@@ -130,11 +151,25 @@ export function EventMap({
 
     const draw = () => {
       const { width, height } = canvas;
-      const { zoom, panX, panY } = mapState;
+      const { zoom, panX, panY, backgroundOpacity = 0.5, backgroundScale = 1 } = mapState;
 
       // Clear canvas
       ctx.fillStyle = "#fafafa";
       ctx.fillRect(0, 0, width, height);
+
+      // Draw background image if loaded
+      if (backgroundImageLoaded) {
+        ctx.save();
+        ctx.globalAlpha = backgroundOpacity;
+
+        const imgWidth = backgroundImageLoaded.width * backgroundScale * zoom;
+        const imgHeight = backgroundImageLoaded.height * backgroundScale * zoom;
+        const imgX = panX + width / 2 - imgWidth / 2;
+        const imgY = panY + height / 2 - imgHeight / 2;
+
+        ctx.drawImage(backgroundImageLoaded, imgX, imgY, imgWidth, imgHeight);
+        ctx.restore();
+      }
 
       // Draw grid
       ctx.strokeStyle = "#e5e5e5";
@@ -182,7 +217,7 @@ export function EventMap({
     return () => {
       window.removeEventListener("resize", updateSize);
     };
-  }, [mapState]);
+  }, [mapState, backgroundImageLoaded]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -228,6 +263,9 @@ export function EventMap({
       const x = e.clientX - rect.left - dragOffset.x - mapState.panX;
       const y = e.clientY - rect.top - dragOffset.y - mapState.panY;
       onIconMove(draggingIcon, x, y);
+    } else if (isSelecting && selectionStart) {
+      // Update selection box
+      setSelectionEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top });
     } else if (isPanning) {
       const deltaX = e.clientX - panStart.x;
       const deltaY = e.clientY - panStart.y;
@@ -244,16 +282,63 @@ export function EventMap({
         onIconMoveEnd(draggingIcon, icon.x, icon.y);
       }
     }
+
+    // If we were selecting, determine which icons are in the selection box
+    if (isSelecting && selectionStart && selectionEnd) {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (rect) {
+        const minX = Math.min(selectionStart.x, selectionEnd.x);
+        const maxX = Math.max(selectionStart.x, selectionEnd.x);
+        const minY = Math.min(selectionStart.y, selectionEnd.y);
+        const maxY = Math.max(selectionStart.y, selectionEnd.y);
+
+        const selected = new Set<string>();
+        mapState.placedIcons.forEach((icon) => {
+          const iconScreenX = icon.x + mapState.panX;
+          const iconScreenY = icon.y + mapState.panY;
+
+          if (iconScreenX >= minX && iconScreenX <= maxX &&
+              iconScreenY >= minY && iconScreenY <= maxY) {
+            selected.add(icon.id);
+          }
+        });
+
+        setSelectedIcons(selected);
+        if (selected.size === 1) {
+          setSelectedIcon(Array.from(selected)[0]);
+        } else {
+          setSelectedIcon(null);
+        }
+      }
+
+      setIsSelecting(false);
+      setSelectionStart(null);
+      setSelectionEnd(null);
+    }
+
     setDraggingIcon(null);
     setIsPanning(false);
   };
 
   const handleMapMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0 && !draggingIcon) {
-      // Left click for panning
-      setIsPanning(true);
-      setPanStart({ x: e.clientX, y: e.clientY });
-      setSelectedIcon(null);
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Shift+click for drag-select
+      if (e.shiftKey) {
+        setIsSelecting(true);
+        setSelectionStart({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        setSelectionEnd({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        setSelectedIcon(null);
+        setSelectedIcons(new Set());
+      } else {
+        // Left click for panning
+        setIsPanning(true);
+        setPanStart({ x: e.clientX, y: e.clientY });
+        setSelectedIcon(null);
+        setSelectedIcons(new Set());
+      }
     }
   };
 
@@ -268,12 +353,131 @@ export function EventMap({
     onZoom(1 - mapState.zoom);
   };
 
-  const handleDeleteSelected = () => {
-    if (selectedIcon) {
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIcons.size > 0) {
+      selectedIcons.forEach((iconId) => {
+        onIconDelete(iconId);
+      });
+      setSelectedIcon(null);
+      setSelectedIcons(new Set());
+    } else if (selectedIcon) {
       onIconDelete(selectedIcon);
       setSelectedIcon(null);
     }
+  }, [selectedIcons, selectedIcon, onIconDelete]);
+
+  const handleBackgroundImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onMapStateUpdate) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      onMapStateUpdate({ backgroundImage: base64 });
+    };
+    reader.readAsDataURL(file);
   };
+
+  const handleRemoveBackgroundImage = () => {
+    if (onMapStateUpdate) {
+      onMapStateUpdate({ backgroundImage: undefined });
+    }
+  };
+
+  const handleCopyIcon = useCallback(() => {
+    if (selectedIcon) {
+      const icon = mapState.placedIcons.find(i => i.id === selectedIcon);
+      if (icon) {
+        setClipboard(icon);
+      }
+    }
+  }, [selectedIcon, mapState.placedIcons]);
+
+  const handlePasteIcon = useCallback(() => {
+    if (clipboard) {
+      const newIcon: PlacedIcon = {
+        ...clipboard,
+        id: `${clipboard.type}-${Date.now()}`,
+        x: clipboard.x + 50, // Offset slightly from original
+        y: clipboard.y + 50,
+      };
+
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const centerX = rect.width / 2 - mapState.panX;
+        const centerY = rect.height / 2 - mapState.panY;
+        newIcon.x = centerX;
+        newIcon.y = centerY;
+      }
+
+      onIconDrop(
+        {
+          id: newIcon.id,
+          type: newIcon.type,
+          label: newIcon.label,
+          icon: newIcon.icon,
+          color: newIcon.color,
+        },
+        newIcon.x,
+        newIcon.y
+      );
+    }
+  }, [clipboard, mapState.panX, mapState.panY, onIconDrop]);
+
+  const handleDuplicateIcon = useCallback(() => {
+    if (selectedIcon) {
+      const icon = mapState.placedIcons.find(i => i.id === selectedIcon);
+      if (icon) {
+        const newIcon: PlacedIcon = {
+          ...icon,
+          id: `${icon.type}-${Date.now()}`,
+          x: icon.x + 50,
+          y: icon.y + 50,
+        };
+        onIconDrop(
+          {
+            id: newIcon.id,
+            type: newIcon.type,
+            label: newIcon.label,
+            icon: newIcon.icon,
+            color: newIcon.color,
+          },
+          newIcon.x,
+          newIcon.y
+        );
+      }
+    }
+  }, [selectedIcon, mapState.placedIcons, onIconDrop]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Copy
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedIcon) {
+        e.preventDefault();
+        handleCopyIcon();
+      }
+      // Paste
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v' && clipboard) {
+        e.preventDefault();
+        handlePasteIcon();
+      }
+      // Duplicate
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedIcon) {
+        e.preventDefault();
+        handleDuplicateIcon();
+      }
+      // Delete
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIcon) {
+        e.preventDefault();
+        handleDeleteSelected();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedIcon, clipboard, handleCopyIcon, handlePasteIcon, handleDuplicateIcon, handleDeleteSelected]);
 
   return (
     <div
@@ -293,10 +497,23 @@ export function EventMap({
         style={{ pointerEvents: draggingIcon ? 'none' : 'auto' }}
       />
 
+      {/* Selection box */}
+      {isSelecting && selectionStart && selectionEnd && (
+        <div
+          className="absolute border-2 border-blue-500 bg-blue-500/10 pointer-events-none z-50"
+          style={{
+            left: `${Math.min(selectionStart.x, selectionEnd.x)}px`,
+            top: `${Math.min(selectionStart.y, selectionEnd.y)}px`,
+            width: `${Math.abs(selectionEnd.x - selectionStart.x)}px`,
+            height: `${Math.abs(selectionEnd.y - selectionStart.y)}px`,
+          }}
+        />
+      )}
+
       {/* Render placed icons as DOM elements */}
       {mapState.placedIcons.map((icon) => {
         const IconComponent = iconComponents[icon.icon as keyof typeof iconComponents] || Pin;
-        const isSelected = selectedIcon === icon.id;
+        const isSelected = selectedIcon === icon.id || selectedIcons.has(icon.id);
         const isHovered = hoveredIcon === icon.id;
         const iconSize = (icon.size || 1);
         const baseSize = 48; // base size in pixels
@@ -374,12 +591,13 @@ export function EventMap({
         >
           <Maximize2 className="w-4 h-4" />
         </Button>
-        {selectedIcon && (
+        {(selectedIcon || selectedIcons.size > 0) && (
           <Button
             size="icon"
             variant="outline"
             className="bg-red-50 dark:bg-red-950 shadow-md border-red-200 dark:border-red-900 hover:bg-red-100 dark:hover:bg-red-900"
             onClick={handleDeleteSelected}
+            title={selectedIcons.size > 1 ? `Delete ${selectedIcons.size} icons` : "Delete icon"}
           >
             <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
           </Button>
@@ -433,7 +651,7 @@ export function EventMap({
             </div>
 
             {/* Size Slider */}
-            <div className="mb-2">
+            <div className="mb-3">
               <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
                 Size: {((icon.size || 1) * 100).toFixed(0)}%
               </label>
@@ -447,9 +665,92 @@ export function EventMap({
                 className="w-full"
               />
             </div>
+
+            {/* Actions */}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleDuplicateIcon}
+                className="flex-1"
+              >
+                <Copy className="w-3 h-3 mr-1" />
+                Duplicate
+              </Button>
+            </div>
           </div>
         );
       })()}
+
+      {/* Background Image Controls Panel */}
+      {!selectedIcon && onMapStateUpdate && (
+        <div className="absolute top-4 left-4 bg-white dark:bg-neutral-900 p-4 rounded-md shadow-lg border border-neutral-200 dark:border-neutral-800 w-64 z-30">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+            Map Settings
+          </h3>
+
+          {/* Background Image Upload */}
+          <div className="mb-3">
+            <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
+              Background Image
+            </label>
+            <div className="flex gap-2">
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={handleBackgroundImageUpload}
+                className="flex-1 text-xs"
+              />
+              {mapState.backgroundImage && (
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={handleRemoveBackgroundImage}
+                  className="flex-shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Background Opacity */}
+          {mapState.backgroundImage && (
+            <>
+              <div className="mb-3">
+                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
+                  Opacity: {((mapState.backgroundOpacity ?? 0.5) * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={mapState.backgroundOpacity ?? 0.5}
+                  onChange={(e) => onMapStateUpdate({ backgroundOpacity: parseFloat(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Background Scale */}
+              <div className="mb-2">
+                <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
+                  Scale: {((mapState.backgroundScale ?? 1) * 100).toFixed(0)}%
+                </label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="3"
+                  step="0.1"
+                  value={mapState.backgroundScale ?? 1}
+                  onChange={(e) => onMapStateUpdate({ backgroundScale: parseFloat(e.target.value) })}
+                  className="w-full"
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Zoom indicator */}
       <div className="absolute bottom-4 right-4 bg-white dark:bg-neutral-900 px-3 py-2 rounded-md shadow-md text-sm z-10">
@@ -461,9 +762,31 @@ export function EventMap({
       {/* Instructions - moved to top-right to avoid overlap with floating tabs */}
       <div className="absolute top-4 right-16 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm px-4 py-3 rounded-md shadow-md text-sm max-w-md border border-neutral-200 dark:border-neutral-800 z-10">
         <p className="text-neutral-600 dark:text-neutral-400">
-          <span className="font-semibold">Tip:</span> Drag icons from the sidebar. Click & drag to pan. Scroll to zoom. {selectedIcon && "Edit properties in the panel."}
+          <span className="font-semibold">Tip:</span> Drag icons from sidebar. Shift+Drag for multi-select. Ctrl+C/V to copy/paste. Ctrl+D to duplicate. {selectedIcon && "Edit properties in panel."}
         </p>
       </div>
+
+      {/* Multi-selection info */}
+      {selectedIcons.size > 1 && !selectedIcon && (
+        <div className="absolute top-4 left-4 bg-white dark:bg-neutral-900 p-4 rounded-md shadow-lg border border-neutral-200 dark:border-neutral-800 w-64 z-30">
+          <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-2">
+            {selectedIcons.size} Icons Selected
+          </h3>
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-3">
+            Press Delete to remove all selected icons
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setSelectedIcons(new Set());
+            }}
+            className="w-full"
+          >
+            Clear Selection
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

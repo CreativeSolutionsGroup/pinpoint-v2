@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabsContent } from "@radix-ui/react-tabs";
-import { Plus, Redo, Undo } from "lucide-react";
+import { Plus, Redo, Undo, Download, Upload } from "lucide-react";
 import { EventMap } from "@/components/event-map/event-map";
 import { IconLegend } from "@/components/event-map/icon-legend";
 import { MapIcon, PlacedIcon, MapState } from "@/components/event-map/types";
@@ -212,28 +212,103 @@ export default function EventPage() {
     setIsFullscreen(!isFullscreen);
   };
 
+  const handleMapStateUpdate = (updates: Partial<MapState>) => {
+    if (currentLocationIndex === -1) return;
+    const currentMapState = locations[currentLocationIndex].mapState;
+    updateLocationStateWithHistory(currentLocationIndex, {
+      ...currentMapState,
+      ...updates,
+    });
+  };
+
+  const handleExportLocations = () => {
+    const dataStr = JSON.stringify(locations, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `event-locations-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportLocations = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string) as LocationState[];
+        setLocations(imported);
+        setHistory([imported]);
+        setHistoryIndex(0);
+        setCurrentTab("location-0");
+      } catch (error) {
+        alert("Failed to import locations. Invalid file format.");
+        console.error(error);
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="flex flex-col h-full py-2 pr-2">
       {/* Header - hidden in fullscreen */}
       {!isFullscreen && (
-        <div className="flex-shrink-0 min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center">
+        <div className="flex-shrink-0 min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center gap-2">
           <h1 className="text-xl">Event Mapping</h1>
-          <Button
-            variant="outline"
-            className="ml-auto"
-            onClick={handleUndo}
-            disabled={historyIndex === 0}
-          >
-            <Undo />
-          </Button>
-          <Button
-            variant="outline"
-            className="ml-2"
-            onClick={handleRedo}
-            disabled={historyIndex === history.length - 1}
-          >
-            <Redo />
-          </Button>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportLocations}
+              title="Export all locations"
+            >
+              <Download className="w-4 h-4 mr-1" />
+              Export
+            </Button>
+            <label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => document.getElementById('import-input')?.click()}
+                title="Import locations"
+              >
+                <Upload className="w-4 h-4 mr-1" />
+                Import
+              </Button>
+              <input
+                id="import-input"
+                type="file"
+                accept=".json"
+                onChange={handleImportLocations}
+                className="hidden"
+              />
+            </label>
+            <div className="w-px h-6 bg-neutral-300 dark:bg-neutral-700" />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleUndo}
+              disabled={historyIndex === 0}
+              title="Undo"
+            >
+              <Undo className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleRedo}
+              disabled={historyIndex === history.length - 1}
+              title="Redo"
+            >
+              <Redo className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       )}
 
@@ -274,6 +349,7 @@ export default function EventPage() {
                     onPan={handlePan}
                     onFullscreen={handleFullscreen}
                     isFullscreen={isFullscreen}
+                    onMapStateUpdate={handleMapStateUpdate}
                   />
                 </div>
               </div>

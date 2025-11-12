@@ -22,4 +22,7 @@ export interface MapState {
   panX: number;
   panY: number;
   placedIcons: PlacedIcon[];
+  backgroundImage?: string; // Base64 or URL
+  backgroundOpacity?: number; // 0-1
+  backgroundScale?: number; // Scale factor for background
 }
