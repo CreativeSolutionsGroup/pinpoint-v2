@@ -81,20 +81,26 @@ interface EventMapProps {
   mapState: MapState;
   onIconDrop: (icon: MapIcon, x: number, y: number) => void;
   onIconMove: (iconId: string, x: number, y: number) => void;
+  onIconMoveEnd?: (iconId: string, x: number, y: number) => void;
   onIconDelete: (iconId: string) => void;
   onIconUpdate?: (iconId: string, updates: Partial<PlacedIcon>) => void;
   onZoom: (delta: number) => void;
   onPan: (deltaX: number, deltaY: number) => void;
+  onFullscreen?: () => void;
+  isFullscreen?: boolean;
 }
 
 export function EventMap({
   mapState,
   onIconDrop,
   onIconMove,
+  onIconMoveEnd,
   onIconDelete,
   onIconUpdate,
   onZoom,
   onPan,
+  onFullscreen,
+  isFullscreen,
 }: EventMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -231,6 +237,13 @@ export function EventMap({
   };
 
   const handleMouseUp = () => {
+    // If we were dragging an icon, commit the position to history
+    if (draggingIcon && onIconMoveEnd) {
+      const icon = mapState.placedIcons.find((i) => i.id === draggingIcon);
+      if (icon) {
+        onIconMoveEnd(draggingIcon, icon.x, icon.y);
+      }
+    }
     setDraggingIcon(null);
     setIsPanning(false);
   };
@@ -356,7 +369,8 @@ export function EventMap({
           size="icon"
           variant="outline"
           className="bg-white dark:bg-neutral-900 shadow-md"
-          onClick={handleReset}
+          onClick={onFullscreen || handleReset}
+          title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
         >
           <Maximize2 className="w-4 h-4" />
         </Button>

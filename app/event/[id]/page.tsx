@@ -78,10 +78,12 @@ export default function EventPage() {
   const [currentTab, setCurrentTab] = useState("location-0");
   const [history, setHistory] = useState<LocationState[][]>([locations]);
   const [historyIndex, setHistoryIndex] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const currentLocationIndex = currentTab === "add-location" ? -1 : parseInt(currentTab.split("-")[1]);
 
-  const updateLocationState = (index: number, newState: MapState) => {
+  // Update state with history tracking (for undoable actions)
+  const updateLocationStateWithHistory = (index: number, newState: MapState) => {
     const newLocations = [...locations];
     newLocations[index] = { ...newLocations[index], mapState: newState };
     setLocations(newLocations);
@@ -91,6 +93,13 @@ export default function EventPage() {
     newHistory.push(newLocations);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
+  };
+
+  // Update state without history tracking (for non-undoable actions like zoom/pan)
+  const updateLocationStateNoHistory = (index: number, newState: MapState) => {
+    const newLocations = [...locations];
+    newLocations[index] = { ...newLocations[index], mapState: newState };
+    setLocations(newLocations);
   };
 
   const handleUndo = () => {
@@ -130,16 +139,29 @@ export default function EventPage() {
     };
 
     const currentMapState = locations[currentLocationIndex].mapState;
-    updateLocationState(currentLocationIndex, {
+    updateLocationStateWithHistory(currentLocationIndex, {
       ...currentMapState,
       placedIcons: [...currentMapState.placedIcons, newIcon],
     });
   };
 
+  // Update icon position during drag (no history)
   const handleIconMove = (iconId: string, x: number, y: number) => {
     if (currentLocationIndex === -1) return;
     const currentMapState = locations[currentLocationIndex].mapState;
-    updateLocationState(currentLocationIndex, {
+    updateLocationStateNoHistory(currentLocationIndex, {
+      ...currentMapState,
+      placedIcons: currentMapState.placedIcons.map((icon) =>
+        icon.id === iconId ? { ...icon, x, y } : icon
+      ),
+    });
+  };
+
+  // Commit icon position when drag ends (with history)
+  const handleIconMoveEnd = (iconId: string, x: number, y: number) => {
+    if (currentLocationIndex === -1) return;
+    const currentMapState = locations[currentLocationIndex].mapState;
+    updateLocationStateWithHistory(currentLocationIndex, {
       ...currentMapState,
       placedIcons: currentMapState.placedIcons.map((icon) =>
         icon.id === iconId ? { ...icon, x, y } : icon
@@ -150,7 +172,7 @@ export default function EventPage() {
   const handleIconDelete = (iconId: string) => {
     if (currentLocationIndex === -1) return;
     const currentMapState = locations[currentLocationIndex].mapState;
-    updateLocationState(currentLocationIndex, {
+    updateLocationStateWithHistory(currentLocationIndex, {
       ...currentMapState,
       placedIcons: currentMapState.placedIcons.filter((icon) => icon.id !== iconId),
     });
@@ -159,7 +181,7 @@ export default function EventPage() {
   const handleZoom = (delta: number) => {
     if (currentLocationIndex === -1) return;
     const currentMapState = locations[currentLocationIndex].mapState;
-    updateLocationState(currentLocationIndex, {
+    updateLocationStateNoHistory(currentLocationIndex, {
       ...currentMapState,
       zoom: Math.max(0.5, Math.min(3, currentMapState.zoom + delta)),
     });
@@ -168,7 +190,7 @@ export default function EventPage() {
   const handlePan = (deltaX: number, deltaY: number) => {
     if (currentLocationIndex === -1) return;
     const currentMapState = locations[currentLocationIndex].mapState;
-    updateLocationState(currentLocationIndex, {
+    updateLocationStateNoHistory(currentLocationIndex, {
       ...currentMapState,
       panX: currentMapState.panX + deltaX,
       panY: currentMapState.panY + deltaY,
@@ -178,7 +200,7 @@ export default function EventPage() {
   const handleIconUpdate = (iconId: string, updates: Partial<PlacedIcon>) => {
     if (currentLocationIndex === -1) return;
     const currentMapState = locations[currentLocationIndex].mapState;
-    updateLocationState(currentLocationIndex, {
+    updateLocationStateWithHistory(currentLocationIndex, {
       ...currentMapState,
       placedIcons: currentMapState.placedIcons.map((icon) =>
         icon.id === iconId ? { ...icon, ...updates } : icon
@@ -186,50 +208,58 @@ export default function EventPage() {
     });
   };
 
+  const handleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
   return (
     <div className="flex flex-col h-full py-2 pr-2">
-      {/* Header */}
-      <div className="flex-shrink-0 min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center">
-        <h1 className="text-xl">Event Mapping</h1>
-        <Button
-          variant="outline"
-          className="ml-auto"
-          onClick={handleUndo}
-          disabled={historyIndex === 0}
-        >
-          <Undo />
-        </Button>
-        <Button
-          variant="outline"
-          className="ml-2"
-          onClick={handleRedo}
-          disabled={historyIndex === history.length - 1}
-        >
-          <Redo />
-        </Button>
-      </div>
+      {/* Header - hidden in fullscreen */}
+      {!isFullscreen && (
+        <div className="flex-shrink-0 min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center">
+          <h1 className="text-xl">Event Mapping</h1>
+          <Button
+            variant="outline"
+            className="ml-auto"
+            onClick={handleUndo}
+            disabled={historyIndex === 0}
+          >
+            <Undo />
+          </Button>
+          <Button
+            variant="outline"
+            className="ml-2"
+            onClick={handleRedo}
+            disabled={historyIndex === history.length - 1}
+          >
+            <Redo />
+          </Button>
+        </div>
+      )}
 
       {/* Main Content Area */}
-      <div className="flex-1 border shadow-md rounded-md mt-2 overflow-hidden relative flex flex-col min-h-0">
+      <div className={`flex-1 border shadow-md rounded-md overflow-hidden relative flex flex-col min-h-0 ${isFullscreen ? '' : 'mt-2'}`}>
         <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex flex-col h-full">
           {/* Tab Contents - takes full height */}
           {locations.map((location, index) => (
             <TabsContent key={index} value={`location-${index}`} className="flex-1 m-0 data-[state=active]:flex h-full">
               <div className="flex h-full w-full">
-                {/* Icon Legend Sidebar */}
-                <div className="w-72 h-full border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col flex-shrink-0">
-                  <div className="p-4 pb-2 flex-shrink-0">
-                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                      {location.name}
-                    </h2>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      Drag icons to map
-                    </p>
+                {/* Icon Legend Sidebar - hidden in fullscreen */}
+                {!isFullscreen && (
+                  <div className="w-72 h-full border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col flex-shrink-0">
+                    <div className="p-4 pb-2 flex-shrink-0">
+                      <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                        {location.name}
+                      </h2>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        Drag icons to map
+                      </p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
+                      <IconLegend icons={defaultIcons} />
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
-                    <IconLegend icons={defaultIcons} />
-                  </div>
-                </div>
+                )}
 
                 {/* Map Area */}
                 <div className="flex-1 relative min-w-0 min-h-0">
@@ -237,10 +267,13 @@ export default function EventPage() {
                     mapState={location.mapState}
                     onIconDrop={handleIconDrop}
                     onIconMove={handleIconMove}
+                    onIconMoveEnd={handleIconMoveEnd}
                     onIconDelete={handleIconDelete}
                     onIconUpdate={handleIconUpdate}
                     onZoom={handleZoom}
                     onPan={handlePan}
+                    onFullscreen={handleFullscreen}
+                    isFullscreen={isFullscreen}
                   />
                 </div>
               </div>
@@ -256,17 +289,19 @@ export default function EventPage() {
             </div>
           </TabsContent>
 
-          {/* Floating Tab Selector at Bottom Left */}
-          <TabsList className="absolute bottom-4 left-4 z-50 shadow-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm border border-neutral-200 dark:border-neutral-800">
-            {locations.map((location, index) => (
-              <TabsTrigger key={index} value={`location-${index}`}>
-                {location.name}
+          {/* Floating Tab Selector at Bottom Left - hidden in fullscreen */}
+          {!isFullscreen && (
+            <TabsList className="absolute bottom-4 left-4 z-50 shadow-lg bg-white/95 dark:bg-neutral-900/95 backdrop-blur-sm border border-neutral-200 dark:border-neutral-800">
+              {locations.map((location, index) => (
+                <TabsTrigger key={index} value={`location-${index}`}>
+                  {location.name}
+                </TabsTrigger>
+              ))}
+              <TabsTrigger value="add-location">
+                <Plus />
               </TabsTrigger>
-            ))}
-            <TabsTrigger value="add-location">
-              <Plus />
-            </TabsTrigger>
-          </TabsList>
+            </TabsList>
+          )}
         </Tabs>
       </div>
     </div>
