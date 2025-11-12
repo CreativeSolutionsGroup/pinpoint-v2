@@ -126,6 +126,7 @@ export default function EventPage() {
       icon: icon.icon,
       color: icon.color,
       label: icon.label,
+      size: 1, // Default size
     };
 
     const currentMapState = locations[currentLocationIndex].mapState;
@@ -174,6 +175,17 @@ export default function EventPage() {
     });
   };
 
+  const handleIconUpdate = (iconId: string, updates: Partial<PlacedIcon>) => {
+    if (currentLocationIndex === -1) return;
+    const currentMapState = locations[currentLocationIndex].mapState;
+    updateLocationState(currentLocationIndex, {
+      ...currentMapState,
+      placedIcons: currentMapState.placedIcons.map((icon) =>
+        icon.id === iconId ? { ...icon, ...updates } : icon
+      ),
+    });
+  };
+
   return (
     <div className="flex flex-col h-full py-2 pr-2">
       <div className="min-h-12 max-h-12 bg-muted rounded-md px-3 flex items-center">
@@ -195,49 +207,10 @@ export default function EventPage() {
           <Redo />
         </Button>
       </div>
-      <div className="flex-1 flex flex-col border shadow-md rounded-md p-2 mt-2">
-        <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex flex-col flex-1">
-          {locations.map((location, index) => (
-            <TabsContent key={index} value={`location-${index}`} className="flex-1">
-              <div className="flex h-full">
-                {/* Icon Legend Sidebar */}
-                <div className="w-72 border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 overflow-y-auto">
-                  <div className="mb-4">
-                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
-                      {location.name}
-                    </h2>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                      Drag icons to map
-                    </p>
-                  </div>
-                  <IconLegend icons={defaultIcons} />
-                </div>
-
-                {/* Map Area */}
-                <div className="flex-1 relative">
-                  <EventMap
-                    mapState={location.mapState}
-                    onIconDrop={handleIconDrop}
-                    onIconMove={handleIconMove}
-                    onIconDelete={handleIconDelete}
-                    onZoom={handleZoom}
-                    onPan={handlePan}
-                  />
-                </div>
-              </div>
-            </TabsContent>
-          ))}
-
-          <TabsContent value="add-location" className="flex-1">
-            <div className="flex items-center justify-center h-full">
-              <Button onClick={handleAddLocation} size="lg">
-                <Plus className="mr-2" />
-                Create New Location
-              </Button>
-            </div>
-          </TabsContent>
-
-          <TabsList>
+      <div className="flex-1 flex flex-col border shadow-md rounded-md p-2 mt-2 overflow-hidden">
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="flex flex-col h-full">
+          {/* Tabs at the top */}
+          <TabsList className="mb-2">
             {locations.map((location, index) => (
               <TabsTrigger key={index} value={`location-${index}`}>
                 {location.name}
@@ -247,6 +220,50 @@ export default function EventPage() {
               <Plus />
             </TabsTrigger>
           </TabsList>
+
+          {/* Tab Contents */}
+          {locations.map((location, index) => (
+            <TabsContent key={index} value={`location-${index}`} className="flex-1 m-0">
+              <div className="flex h-full">
+                {/* Icon Legend Sidebar */}
+                <div className="w-72 h-full border-r border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex flex-col">
+                  <div className="p-4 pb-2">
+                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+                      {location.name}
+                    </h2>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Drag icons to map
+                    </p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-4 pb-4">
+                    <IconLegend icons={defaultIcons} />
+                  </div>
+                </div>
+
+                {/* Map Area */}
+                <div className="flex-1 relative overflow-hidden">
+                  <EventMap
+                    mapState={location.mapState}
+                    onIconDrop={handleIconDrop}
+                    onIconMove={handleIconMove}
+                    onIconDelete={handleIconDelete}
+                    onIconUpdate={handleIconUpdate}
+                    onZoom={handleZoom}
+                    onPan={handlePan}
+                  />
+                </div>
+              </div>
+            </TabsContent>
+          ))}
+
+          <TabsContent value="add-location" className="flex-1 m-0">
+            <div className="flex items-center justify-center h-full">
+              <Button onClick={handleAddLocation} size="lg">
+                <Plus className="mr-2" />
+                Create New Location
+              </Button>
+            </div>
+          </TabsContent>
         </Tabs>
       </div>
     </div>

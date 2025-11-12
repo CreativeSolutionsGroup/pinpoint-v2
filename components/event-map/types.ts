@@ -14,6 +14,7 @@ export interface PlacedIcon {
   icon: string;
   color: string;
   label: string;
+  size?: number; // Icon size multiplier (default 1)
 }
 
 export interface MapState {

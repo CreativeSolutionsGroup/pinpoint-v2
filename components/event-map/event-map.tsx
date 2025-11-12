@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState } from "react";
-import { MapState, MapIcon } from "./types";
+import { MapState, MapIcon, PlacedIcon } from "./types";
 import { Button } from "@/components/ui/button";
 import { ZoomIn, ZoomOut, Maximize2, Trash2 } from "lucide-react";
 import {
@@ -82,6 +82,7 @@ interface EventMapProps {
   onIconDrop: (icon: MapIcon, x: number, y: number) => void;
   onIconMove: (iconId: string, x: number, y: number) => void;
   onIconDelete: (iconId: string) => void;
+  onIconUpdate?: (iconId: string, updates: Partial<PlacedIcon>) => void;
   onZoom: (delta: number) => void;
   onPan: (deltaX: number, deltaY: number) => void;
 }
@@ -91,6 +92,7 @@ export function EventMap({
   onIconDrop,
   onIconMove,
   onIconDelete,
+  onIconUpdate,
   onZoom,
   onPan,
 }: EventMapProps) {
@@ -261,17 +263,21 @@ export function EventMap({
   };
 
   return (
-    <div className="relative w-full h-full" ref={containerRef}>
+    <div
+      className="relative w-full h-full"
+      ref={containerRef}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
       <canvas
         ref={canvasRef}
         className="absolute inset-0 cursor-grab active:cursor-grabbing"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onMouseDown={handleMapMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        style={{ pointerEvents: draggingIcon ? 'none' : 'auto' }}
       />
 
       {/* Render placed icons as DOM elements */}
@@ -279,31 +285,47 @@ export function EventMap({
         const IconComponent = iconComponents[icon.icon as keyof typeof iconComponents] || Pin;
         const isSelected = selectedIcon === icon.id;
         const isHovered = hoveredIcon === icon.id;
+        const iconSize = (icon.size || 1);
+        const baseSize = 48; // base size in pixels
 
         return (
           <div
             key={icon.id}
-            className={`absolute cursor-move transition-transform ${
-              isSelected ? "ring-2 ring-blue-500 ring-offset-2 scale-110" : ""
-            } ${isHovered && !isSelected ? "scale-105" : ""}`}
+            className={`absolute cursor-move transition-shadow ${
+              isSelected ? "ring-2 ring-blue-500 ring-offset-2" : ""
+            } ${isHovered && !isSelected ? "ring-2 ring-neutral-300" : ""}`}
             style={{
               left: `${icon.x + mapState.panX}px`,
               top: `${icon.y + mapState.panY}px`,
               transform: `translate(-50%, -50%) scale(${mapState.zoom})`,
               transformOrigin: "center",
+              pointerEvents: 'auto',
+              zIndex: isSelected ? 1000 : draggingIcon ? 999 : 1,
             }}
             onMouseDown={(e) => handleIconMouseDown(e, icon.id)}
             onMouseEnter={() => setHoveredIcon(icon.id)}
             onMouseLeave={() => setHoveredIcon(null)}
           >
             <div
-              className="w-12 h-12 rounded-lg shadow-lg flex items-center justify-center"
-              style={{ backgroundColor: `${icon.color}40`, border: `2px solid ${icon.color}` }}
+              className="rounded-lg shadow-lg flex items-center justify-center"
+              style={{
+                width: `${baseSize * iconSize}px`,
+                height: `${baseSize * iconSize}px`,
+                backgroundColor: `${icon.color}40`,
+                border: `2px solid ${icon.color}`
+              }}
             >
-              <IconComponent className="w-6 h-6" style={{ color: icon.color }} />
+              <IconComponent
+                className="w-6 h-6"
+                style={{
+                  color: icon.color,
+                  width: `${24 * iconSize}px`,
+                  height: `${24 * iconSize}px`,
+                }}
+              />
             </div>
             <div
-              className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-black/75 text-white px-2 py-1 rounded text-xs whitespace-nowrap"
+              className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-black/75 text-white px-2 py-1 rounded text-xs whitespace-nowrap pointer-events-none"
               style={{ fontSize: `${12 / mapState.zoom}px` }}
             >
               {icon.label}
@@ -350,6 +372,71 @@ export function EventMap({
         )}
       </div>
 
+      {/* Icon Properties Panel */}
+      {selectedIcon && onIconUpdate && (() => {
+        const icon = mapState.placedIcons.find(i => i.id === selectedIcon);
+        if (!icon) return null;
+
+        return (
+          <div className="absolute top-4 left-4 bg-white dark:bg-neutral-900 p-4 rounded-md shadow-lg border border-neutral-200 dark:border-neutral-800 w-64">
+            <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
+              Icon Properties
+            </h3>
+
+            {/* Label */}
+            <div className="mb-3">
+              <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
+                Label
+              </label>
+              <input
+                type="text"
+                value={icon.label}
+                onChange={(e) => onIconUpdate(selectedIcon, { label: e.target.value })}
+                className="w-full px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+              />
+            </div>
+
+            {/* Color Picker */}
+            <div className="mb-3">
+              <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
+                Color
+              </label>
+              <div className="flex gap-2 items-center">
+                <input
+                  type="color"
+                  value={icon.color}
+                  onChange={(e) => onIconUpdate(selectedIcon, { color: e.target.value })}
+                  className="w-12 h-8 rounded cursor-pointer"
+                />
+                <input
+                  type="text"
+                  value={icon.color}
+                  onChange={(e) => onIconUpdate(selectedIcon, { color: e.target.value })}
+                  className="flex-1 px-2 py-1 text-sm border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
+                  placeholder="#000000"
+                />
+              </div>
+            </div>
+
+            {/* Size Slider */}
+            <div className="mb-2">
+              <label className="text-xs text-neutral-600 dark:text-neutral-400 block mb-1">
+                Size: {((icon.size || 1) * 100).toFixed(0)}%
+              </label>
+              <input
+                type="range"
+                min="0.5"
+                max="3"
+                step="0.1"
+                value={icon.size || 1}
+                onChange={(e) => onIconUpdate(selectedIcon, { size: parseFloat(e.target.value) })}
+                className="w-full"
+              />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Zoom indicator */}
       <div className="absolute bottom-4 right-4 bg-white dark:bg-neutral-900 px-3 py-2 rounded-md shadow-md text-sm">
         <span className="text-neutral-600 dark:text-neutral-400">
@@ -360,7 +447,7 @@ export function EventMap({
       {/* Instructions */}
       <div className="absolute bottom-4 left-4 bg-white dark:bg-neutral-900 px-4 py-3 rounded-md shadow-md text-sm max-w-md">
         <p className="text-neutral-600 dark:text-neutral-400">
-          <span className="font-semibold">Tip:</span> Drag icons from the sidebar to the map. Click and drag to pan. Scroll to zoom.
+          <span className="font-semibold">Tip:</span> Drag icons from the sidebar to the map. Click and drag to pan. Scroll to zoom. {selectedIcon && "Select an icon to edit its properties."}
         </p>
       </div>
     </div>
