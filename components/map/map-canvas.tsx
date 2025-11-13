@@ -25,6 +25,7 @@ interface MapCanvasProps {
   onIconMoveComplete?: (icons: MapIconType[]) => void;
   onConnectorMoveComplete?: (connectors: Connector[]) => void;
   onAddIcon?: (iconType: IconType, position: { x: number; y: number }) => void;
+  onSelectionChange?: (selectedIds: Set<string>) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -41,17 +42,31 @@ export function MapCanvas({
   onIconMoveComplete,
   onConnectorMoveComplete,
   onAddIcon,
+  onSelectionChange,
   onUndo,
   onRedo,
   canUndo = false,
   canRedo = false,
 }: MapCanvasProps) {
-  // Filter icons based on layer visibility
+  // Filter icons based on layer visibility and sort by layer order
   const visibleLayers = new Set(layers.filter(l => l.visible).map(l => l.id));
-  const visibleIcons = icons.filter(icon => {
-    const iconLayer = icon.layer || "default";
-    return visibleLayers.has(iconLayer) || visibleLayers.size === 0;
-  });
+  
+  // Create a map of layer ID to its index for sorting
+  const layerOrderMap = new Map(layers.map((layer, index) => [layer.id, index]));
+  
+  const visibleIcons = icons
+    .filter(icon => {
+      const iconLayer = icon.layer || "default";
+      return visibleLayers.has(iconLayer) || visibleLayers.size === 0;
+    })
+    .sort((a, b) => {
+      // Sort by layer order - lower index = rendered first (bottom layer)
+      const layerA = a.layer || "default";
+      const layerB = b.layer || "default";
+      const orderA = layerOrderMap.get(layerA) ?? -1;
+      const orderB = layerOrderMap.get(layerB) ?? -1;
+      return orderA - orderB;
+    });
   
   // Check if icon's layer is locked
   const lockedLayers = new Set(layers.filter(l => l.locked).map(l => l.id));
@@ -76,10 +91,15 @@ export function MapCanvas({
   const [showGrid, setShowGrid] = useState(false);
   const [snapToGrid, setSnapToGrid] = useState(false);
   const [showPrintDialog, setShowPrintDialog] = useState(false);
-  const gridSize = 5; // 5% grid spacing
+  const gridSize = 2.5; // 2.5% grid spacing (smaller, more precise grid)
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Notify parent of selection changes
+  useEffect(() => {
+    onSelectionChange?.(selectedIconIds);
+  }, [selectedIconIds, onSelectionChange]);
 
   const handleZoomIn = () => {
     setZoom((prev) => Math.min(prev + 0.25, 3));
@@ -277,26 +297,30 @@ export function MapCanvas({
   };
 
   const handleIconMove = (id: string, position: { x: number; y: number }) => {
+    // Snap position during drag if enabled
+    const targetPosition = snapToGrid ? snapPosition(position) : position;
+    
     // If the icon being moved is part of a selection, move all selected icons
     if (selectedIconIds.has(id) && selectedIconIds.size > 1) {
       const startPos = dragStartPositions.current.get(id);
       if (!startPos) return;
       
       // Calculate the delta from the dragged icon's start position
-      const deltaX = position.x - startPos.x;
-      const deltaY = position.y - startPos.y;
+      const deltaX = targetPosition.x - startPos.x;
+      const deltaY = targetPosition.y - startPos.y;
       
       // Move all selected icons by the same delta
       const updatedIcons = icons.map((icon) => {
         if (selectedIconIds.has(icon.id)) {
           const iconStartPos = dragStartPositions.current.get(icon.id);
           if (iconStartPos) {
+            const newPos = {
+              x: Math.max(0, Math.min(100, iconStartPos.x + deltaX)),
+              y: Math.max(0, Math.min(100, iconStartPos.y + deltaY)),
+            };
             return {
               ...icon,
-              position: {
-                x: Math.max(0, Math.min(100, iconStartPos.x + deltaX)),
-                y: Math.max(0, Math.min(100, iconStartPos.y + deltaY)),
-              }
+              position: snapToGrid ? snapPosition(newPos) : newPos
             };
           }
         }
@@ -306,7 +330,7 @@ export function MapCanvas({
     } else {
       // Single icon movement
       const updatedIcons = icons.map((icon) =>
-        icon.id === id ? { ...icon, position } : icon
+        icon.id === id ? { ...icon, position: targetPosition } : icon
       );
       onIconsChange(updatedIcons);
     }
@@ -378,52 +402,61 @@ export function MapCanvas({
   };
 
   const handleIconClick = (iconId: string) => {
-    if (!isConnectMode) return;
+    if (isConnectMode) {
+      // Connect mode logic
+      if (!connectStartIconId) {
+        // First icon selected - start connection
+        setConnectStartIconId(iconId);
+      } else if (connectStartIconId === iconId) {
+        // Clicked the same icon - cancel
+        setConnectStartIconId(null);
+      } else {
+        // Check if a connector already exists between these two icons (in either direction)
+        const connectorExists = connectors.some(
+          (conn) =>
+            (conn.startIconId === connectStartIconId && conn.endIconId === iconId) ||
+            (conn.startIconId === iconId && conn.endIconId === connectStartIconId)
+        );
 
-    if (!connectStartIconId) {
-      // First icon selected - start connection
-      setConnectStartIconId(iconId);
-    } else if (connectStartIconId === iconId) {
-      // Clicked the same icon - cancel
-      setConnectStartIconId(null);
-    } else {
-      // Check if a connector already exists between these two icons (in either direction)
-      const connectorExists = connectors.some(
-        (conn) =>
-          (conn.startIconId === connectStartIconId && conn.endIconId === iconId) ||
-          (conn.startIconId === iconId && conn.endIconId === connectStartIconId)
-      );
+        if (connectorExists) {
+          // Show notification that connector already exists
+          toast.info("Connector Already Exists", {
+            description: "A connector already exists between these two icons."
+          });
+          // Reset and exit connect mode
+          setConnectStartIconId(null);
+          setIsConnectMode(false);
+          return;
+        }
 
-      if (connectorExists) {
-        // Show notification that connector already exists
-        toast.info("Connector Already Exists", {
-          description: "A connector already exists between these two icons."
-        });
-        // Reset and exit connect mode
+        // Second icon selected - create connection
+        const newConnector: Connector = {
+          id: `connector-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          startIconId: connectStartIconId,
+          endIconId: iconId,
+          color: "#64748b",
+          width: 2,
+          style: "solid",
+        };
+
+        if (onConnectorsChange) {
+          const updatedConnectors = [...connectors, newConnector];
+          onConnectorsChange(updatedConnectors);
+          onConnectorMoveComplete?.(updatedConnectors);
+        }
+
+        // Reset connection state
         setConnectStartIconId(null);
         setIsConnectMode(false);
-        return;
       }
-
-      // Second icon selected - create connection
-      const newConnector: Connector = {
-        id: `connector-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        startIconId: connectStartIconId,
-        endIconId: iconId,
-        color: "#64748b",
-        width: 2,
-        style: "solid",
-      };
-
-      if (onConnectorsChange) {
-        const updatedConnectors = [...connectors, newConnector];
-        onConnectorsChange(updatedConnectors);
-        onConnectorMoveComplete?.(updatedConnectors);
+    } else {
+      // Single icon selection mode
+      // Toggle selection - if already selected, deselect it; otherwise select only this icon
+      if (selectedIconIds.has(iconId)) {
+        setSelectedIconIds(new Set());
+      } else {
+        setSelectedIconIds(new Set([iconId]));
       }
-
-      // Reset connection state
-      setConnectStartIconId(null);
-      setIsConnectMode(false);
     }
   };
 
@@ -940,12 +973,17 @@ export function MapCanvas({
           </svg>
 
           {/* Placed Icons */}
-          {visibleIcons.map((icon) => {
+          {visibleIcons.map((icon, index) => {
             const locked = isIconLocked(icon);
+            // Calculate z-index based on position in sorted array
+            // Start at 10 to leave room below for other elements, each icon gets +1
+            const iconZIndex = 10 + index;
+            
             return (
               <MapIconComponent
                 key={icon.id}
                 icon={icon}
+                zIndex={iconZIndex}
                 onMove={locked ? () => {} : handleIconMove}
                 onMoveComplete={locked ? () => {} : handleIconMoveComplete}
                 onUpdate={locked ? () => {} : handleIconUpdate}
@@ -973,7 +1011,7 @@ export function MapCanvas({
             }
           </>
         ) : (
-          "Drag icons to add • Move icons • Ctrl+Drag to select • Ctrl+C/V to copy/paste • Press / for shortcuts"
+          "Drag icons to add • Click to select • Ctrl+Drag for group select • Ctrl+C/V to copy/paste • Press / for shortcuts"
         )}
       </div>
 

@@ -6,7 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabsContent } from "@radix-ui/react-tabs";
 import { Plus, Search, Pencil, Check } from "lucide-react";
 import { MapEditor } from "@/components/map";
-import type { MapIconType, Connector } from "@/components/map";
+import type { MapIconType, Connector, Layer } from "@/components/map";
 import { useState } from "react";
 
 interface MapState {
@@ -21,13 +21,26 @@ export default function EventPage() {
   const [map2Icons, setMap2Icons] = useState<MapIconType[]>([]);
   const [map1Connectors, setMap1Connectors] = useState<Connector[]>([]);
   const [map2Connectors, setMap2Connectors] = useState<Connector[]>([]);
-  const [history, setHistory] = useState<MapState[]>([{ icons: [], connectors: [] }]);
+  const [map1Layers, setMap1Layers] = useState<Layer[]>([
+    { id: "default", name: "Default", visible: true, locked: false }
+  ]);
+  const [map2Layers, setMap2Layers] = useState<Layer[]>([
+    { id: "default", name: "Default", visible: true, locked: false }
+  ]);
+  const [map1CurrentLayer, setMap1CurrentLayer] = useState<string>("default");
+  const [map2CurrentLayer, setMap2CurrentLayer] = useState<string>("default");
+  const [history, setHistory] = useState<MapState[]>([{ 
+    icons: [], 
+    connectors: []
+  }]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [forceUpdate, setForceUpdate] = useState(0);
   const [activeTab, setActiveTab] = useState("location-1");
 
   const setCurrentIcons = activeTab === "location-1" ? setMap1Icons : setMap2Icons;
   const setCurrentConnectors = activeTab === "location-1" ? setMap1Connectors : setMap2Connectors;
+  const setCurrentLayers = activeTab === "location-1" ? setMap1Layers : setMap2Layers;
+  const setCurrentCurrentLayer = activeTab === "location-1" ? setMap1CurrentLayer : setMap2CurrentLayer;
   const currentIcons = activeTab === "location-1" ? map1Icons : map2Icons;
   const currentConnectors = activeTab === "location-1" ? map1Connectors : map2Connectors;
 
@@ -40,15 +53,29 @@ export default function EventPage() {
     setCurrentConnectors(newConnectors);
   };
 
+  const handleLayersChange = (newLayers: Layer[]) => {
+    setCurrentLayers(newLayers);
+  };
+
+  const handleCurrentLayerChange = (newCurrentLayer: string) => {
+    setCurrentCurrentLayer(newCurrentLayer);
+  };
+
   // Move complete handler - adds to history only when icon is dropped or moved
   const handleIconMoveComplete = (newIcons: MapIconType[]) => {
-    const newState: MapState = { icons: newIcons, connectors: currentConnectors };
+    const newState: MapState = { 
+      icons: newIcons, 
+      connectors: currentConnectors
+    };
     saveToHistory(newState);
   };
 
   // Connector complete handler - adds to history when connector is added/edited/deleted
   const handleConnectorMoveComplete = (newConnectors: Connector[]) => {
-    const newState: MapState = { icons: currentIcons, connectors: newConnectors };
+    const newState: MapState = { 
+      icons: currentIcons, 
+      connectors: newConnectors
+    };
     saveToHistory(newState);
   };
 
@@ -140,8 +167,12 @@ export default function EventPage() {
                 mapImageUrl="https://placehold.co/1200x800/1e293b/94a3b8?text=Campus+Map+1"
                 initialIcons={map1Icons}
                 initialConnectors={map1Connectors}
+                initialLayers={map1Layers}
+                initialCurrentLayer={map1CurrentLayer}
                 onIconsChange={handleIconsChange}
                 onConnectorsChange={handleConnectorsChange}
+                onLayersChange={handleLayersChange}
+                onCurrentLayerChange={handleCurrentLayerChange}
                 onIconMoveComplete={handleIconMoveComplete}
                 onConnectorMoveComplete={handleConnectorMoveComplete}
                 onUndo={handleUndo}
@@ -156,8 +187,12 @@ export default function EventPage() {
                 mapImageUrl="https://placehold.co/1200x800/1e293b/94a3b8?text=Campus+Map+2"
                 initialIcons={map2Icons}
                 initialConnectors={map2Connectors}
+                initialLayers={map2Layers}
+                initialCurrentLayer={map2CurrentLayer}
                 onIconsChange={handleIconsChange}
                 onConnectorsChange={handleConnectorsChange}
+                onLayersChange={handleLayersChange}
+                onCurrentLayerChange={handleCurrentLayerChange}
                 onIconMoveComplete={handleIconMoveComplete}
                 onConnectorMoveComplete={handleConnectorMoveComplete}
                 onUndo={handleUndo}

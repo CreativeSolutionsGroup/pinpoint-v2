@@ -5,4 +5,7 @@ export { MapIcon } from "./map-icon";
 export { MapConnector } from "./map-connector";
 export { IconEditMenu } from "./icon-edit-menu";
 export { ConnectorEditMenu } from "./connector-edit-menu";
-export type { MapIcon as MapIconType, IconType, Position, MapData, Connector, ConnectorStyle } from "./types";
+export { SidebarPanel } from "./sidebar-panel";
+export { IconOptionsPanel } from "./icon-options-panel";
+export { LayersPanel } from "./layers-panel";
+export type { MapIcon as MapIconType, IconType, Position, MapData, Connector, ConnectorStyle, Layer } from "./types";

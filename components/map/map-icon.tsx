@@ -18,6 +18,7 @@ interface MapIconProps {
   isConnectMode?: boolean;
   isConnectStart?: boolean;
   isSelected?: boolean;
+  zIndex?: number;
 }
 
 export function MapIcon({ 
@@ -33,12 +34,15 @@ export function MapIcon({
   isConnectMode = false,
   isConnectStart = false,
   isSelected = false,
+  zIndex = 0,
 }: MapIconProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const finalPositionRef = useRef({ x: icon.position.x, y: icon.position.y });
+  const mouseDownTimeRef = useRef<number>(0);
+  const mouseDownPosRef = useRef({ x: 0, y: 0 });
 
   const currentSize = icon.size || 1;
   const currentRotation = icon.rotation || 0;
@@ -58,6 +62,11 @@ export function MapIcon({
     }
     
     e.preventDefault();
+    
+    // Track mouse down time and position to detect click vs drag
+    mouseDownTimeRef.current = Date.now();
+    mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
+    
     const iconElement = e.currentTarget.getBoundingClientRect();
     dragOffsetRef.current = {
       x: e.clientX - iconElement.left - iconElement.width / 2,
@@ -89,11 +98,23 @@ export function MapIcon({
       onMove(icon.id, { x: clampedX, y: clampedY });
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       setIsDragging(false);
-      // Call onMoveComplete when dragging ends
-      if (onMoveComplete) {
-        onMoveComplete(icon.id, finalPositionRef.current);
+      
+      // Detect if this was a click or a drag
+      const timeDiff = Date.now() - mouseDownTimeRef.current;
+      const distX = Math.abs(e.clientX - mouseDownPosRef.current.x);
+      const distY = Math.abs(e.clientY - mouseDownPosRef.current.y);
+      const totalDist = Math.sqrt(distX * distX + distY * distY);
+      
+      // If it was a quick click with minimal movement, treat as click
+      if (timeDiff < 200 && totalDist < 5) {
+        onClick?.(icon.id);
+      } else {
+        // Call onMoveComplete when dragging ends
+        if (onMoveComplete) {
+          onMoveComplete(icon.id, finalPositionRef.current);
+        }
       }
     };
 
@@ -104,7 +125,7 @@ export function MapIcon({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, icon.id, onMove, onMoveComplete]);
+  }, [isDragging, icon.id, onMove, onMoveComplete, onClick]);
 
   const IconComponent = iconComponents[icon.icon as keyof typeof iconComponents];
 
@@ -124,6 +145,7 @@ export function MapIcon({
         left: `${icon.position.x}%`,
         top: `${icon.position.y}%`,
         transform: "translate(-50%, -50%)",
+        zIndex: zIndex,
       }}
       onMouseDown={handleMouseDown}
       onMouseEnter={() => setIsHovered(true)}

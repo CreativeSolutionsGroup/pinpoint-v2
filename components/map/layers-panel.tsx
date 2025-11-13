@@ -2,7 +2,7 @@
 
 import { Layer } from "./types";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeOff, Lock, Unlock, Plus, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Eye, EyeOff, Lock, Unlock, Plus, Trash2, GripVertical } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
 
@@ -11,8 +11,6 @@ interface LayersPanelProps {
   onLayersChange: (layers: Layer[]) => void;
   currentLayer: string;
   onCurrentLayerChange: (layerId: string) => void;
-  isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
 }
 
 export function LayersPanel({
@@ -23,6 +21,10 @@ export function LayersPanel({
 }: LayersPanelProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [newLayerName, setNewLayerName] = useState("");
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
+  const [editingLayerName, setEditingLayerName] = useState("");
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
 
   const handleAddLayer = () => {
     if (!newLayerName.trim()) return;
@@ -38,6 +40,29 @@ export function LayersPanel({
     setNewLayerName("");
     setIsAdding(false);
     onCurrentLayerChange(newLayer.id);
+  };
+
+  const handleStartRename = (layer: Layer, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingLayerId(layer.id);
+    setEditingLayerName(layer.name);
+  };
+
+  const handleFinishRename = () => {
+    if (!editingLayerId || !editingLayerName.trim()) {
+      setEditingLayerId(null);
+      return;
+    }
+
+    onLayersChange(
+      layers.map((layer) =>
+        layer.id === editingLayerId
+          ? { ...layer, name: editingLayerName.trim() }
+          : layer
+      )
+    );
+    setEditingLayerId(null);
+    setEditingLayerName("");
   };
 
   const handleToggleVisibility = (layerId: string) => {
@@ -70,11 +95,58 @@ export function LayersPanel({
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, layerId: string) => {
+    setDraggedLayerId(layerId);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, layerId: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverLayerId(layerId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverLayerId(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetLayerId: string) => {
+    e.preventDefault();
+    
+    if (!draggedLayerId || draggedLayerId === targetLayerId) {
+      setDraggedLayerId(null);
+      setDragOverLayerId(null);
+      return;
+    }
+
+    const draggedIndex = layers.findIndex((l) => l.id === draggedLayerId);
+    const targetIndex = layers.findIndex((l) => l.id === targetLayerId);
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedLayerId(null);
+      setDragOverLayerId(null);
+      return;
+    }
+
+    const newLayers = [...layers];
+    const [draggedLayer] = newLayers.splice(draggedIndex, 1);
+    newLayers.splice(targetIndex, 0, draggedLayer);
+
+    onLayersChange(newLayers);
+    setDraggedLayerId(null);
+    setDragOverLayerId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedLayerId(null);
+    setDragOverLayerId(null);
+  };
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="p-3 border-b">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold">Layers</h3>
+    <div className="flex flex-col">
+      <div className="p-3 border-b bg-muted/30">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Manage Layers</span>
           <Button
             variant="ghost"
             size="icon"
@@ -114,15 +186,26 @@ export function LayersPanel({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {layers.map((layer) => (
+      <div className="max-h-64 overflow-y-auto">{layers.map((layer) => (
           <div
             key={layer.id}
-            className={`flex items-center gap-2 px-3 py-2 border-b hover:bg-muted/50 cursor-pointer ${
+            draggable
+            onDragStart={(e) => handleDragStart(e, layer.id)}
+            onDragOver={(e) => handleDragOver(e, layer.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, layer.id)}
+            onDragEnd={handleDragEnd}
+            className={`flex items-center gap-2 px-3 py-2 border-b hover:bg-muted/50 cursor-pointer transition-colors ${
               currentLayer === layer.id ? "bg-muted" : ""
+            } ${draggedLayerId === layer.id ? "opacity-50" : ""} ${
+              dragOverLayerId === layer.id ? "border-t-2 border-t-primary" : ""
             }`}
             onClick={() => onCurrentLayerChange(layer.id)}
           >
+            <div className="cursor-grab active:cursor-grabbing shrink-0">
+              <GripVertical className="h-4 w-4 text-muted-foreground" />
+            </div>
+
             <Button
               variant="ghost"
               size="icon"
@@ -157,7 +240,30 @@ export function LayersPanel({
               )}
             </Button>
 
-            <span className="flex-1 text-sm truncate">{layer.name}</span>
+            {editingLayerId === layer.id ? (
+              <Input
+                value={editingLayerName}
+                onChange={(e) => setEditingLayerName(e.target.value)}
+                className="h-6 text-sm flex-1"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleFinishRename();
+                  if (e.key === "Escape") {
+                    setEditingLayerId(null);
+                    setEditingLayerName("");
+                  }
+                }}
+                onBlur={handleFinishRename}
+                autoFocus
+              />
+            ) : (
+              <span
+                className="flex-1 text-sm truncate hover:text-primary"
+                onClick={(e) => handleStartRename(layer, e)}
+              >
+                {layer.name}
+              </span>
+            )}
 
             {layers.length > 1 && (
               <Button

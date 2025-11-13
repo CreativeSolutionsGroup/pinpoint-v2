@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { MapCanvas } from "./map-canvas";
 import { IconPalette } from "./icon-palette";
-import { LayersPanel } from "./layers-panel";
+import { SidebarPanel } from "./sidebar-panel";
 import { MapIcon, IconType, Connector, Layer } from "./types";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -12,30 +12,18 @@ import {
   Drama, Armchair, Utensils, Coffee, WashingMachine, 
   DoorOpen, DoorClosed, ParkingSquare, Info, Cross,
   Speaker, Camera, ShoppingBag, ClipboardPen, Shield, Wifi,
-  Music, Mic, Beer, Wine, Pizza, IceCream, Sandwich, Apple,
-  MapPin, Flag, Star, Heart, Zap, Gift, Ticket, Trophy,
-  Users, User, Baby, Dog, Cat, Trees, Flower2, Leaf,
-  Sun, Moon, Cloud, CloudRain, Snowflake, Umbrella,
-  Bus, Car, Bike, Train, Plane, Ship, Ambulance, FireExtinguisher,
-  Book, Laptop, Printer, Phone, Mail, MessageSquare, Bell, Megaphone,
-  Home, Building, Building2, Church, Hotel, Hospital, School, Store,
-  Dumbbell, Volleyball, CircleDot, Award, Medal,
-  Lightbulb, Flame, Battery, Plug, Radio, Tv, Gamepad2,
-  Scissors, Wrench, Hammer, Paintbrush, Palette, Brush,
-  ShoppingCart, CreditCard, Wallet, DollarSign, Coins, Banknote,
-  Clock, Calendar, AlarmClock, Timer, Hourglass, Watch
+  Music, Mic, Pizza, IceCream, Sandwich, Apple,
+  MapPin, Flag, Star, Heart, Zap, Gift, Ticket,
+  Users, User, Ambulance, FireExtinguisher,
+  ShoppingCart, CreditCard, Wallet, DollarSign, Coins, Banknote
 } from "lucide-react";
 
 // Sample icon types - you can customize these
 const DEFAULT_ICON_TYPES: IconType[] = [
-  // Event & Entertainment
-  { type: "stage", label: "Stage", icon: "Drama", color: "#ef4444" },
-  { type: "music", label: "Music", icon: "Music", color: "#ec4899" },
-  { type: "mic", label: "Microphone", icon: "Mic", color: "#a855f7" },
-  { type: "speaker", label: "Speaker", icon: "Speaker", color: "#14b8a6" },
-  { type: "photo", label: "Photo Spot", icon: "Camera", color: "#f97316" },
-  { type: "gamepad", label: "Gaming", icon: "Gamepad2", color: "#8b5cf6" },
-  { type: "tv", label: "Display", icon: "Tv", color: "#6366f1" },
+  // Seating & Areas
+  { type: "seating", label: "Seating", icon: "Armchair", color: "#3b82f6" },
+  { type: "users", label: "Group Area", icon: "Users", color: "#8b5cf6" },
+  { type: "user", label: "Individual", icon: "User", color: "#6366f1" },
   
   // Food & Beverages
   { type: "food", label: "Food Stand", icon: "Utensils", color: "#f59e0b" },
@@ -44,13 +32,6 @@ const DEFAULT_ICON_TYPES: IconType[] = [
   { type: "apple", label: "Snacks", icon: "Apple", color: "#22c55e" },
   { type: "icecream", label: "Ice Cream", icon: "IceCream", color: "#06b6d4" },
   { type: "drinks", label: "Drinks", icon: "Coffee", color: "#06b6d4" },
-  { type: "beer", label: "Beer", icon: "Beer", color: "#f59e0b" },
-  { type: "wine", label: "Wine", icon: "Wine", color: "#dc2626" },
-  
-  // Seating & Areas
-  { type: "seating", label: "Seating", icon: "Armchair", color: "#3b82f6" },
-  { type: "users", label: "Group Area", icon: "Users", color: "#8b5cf6" },
-  { type: "user", label: "Individual", icon: "User", color: "#6366f1" },
   
   // Facilities
   { type: "restroom", label: "Restroom", icon: "WashingMachine", color: "#8b5cf6" },
@@ -73,85 +54,19 @@ const DEFAULT_ICON_TYPES: IconType[] = [
   { type: "ambulance", label: "Medical", icon: "Ambulance", color: "#dc2626" },
   { type: "fire", label: "Fire Safety", icon: "FireExtinguisher", color: "#ef4444" },
   
-  // Buildings & Structures
-  { type: "home", label: "Home", icon: "Home", color: "#3b82f6" },
-  { type: "building", label: "Building", icon: "Building", color: "#64748b" },
-  { type: "office", label: "Office", icon: "Building2", color: "#6366f1" },
-  { type: "church", label: "Chapel", icon: "Church", color: "#8b5cf6" },
-  { type: "hotel", label: "Hotel", icon: "Hotel", color: "#06b6d4" },
-  { type: "hospital", label: "Hospital", icon: "Hospital", color: "#ef4444" },
-  { type: "school", label: "School", icon: "School", color: "#f59e0b" },
-  { type: "store", label: "Store", icon: "Store", color: "#ec4899" },
+  // Entertainment
+  { type: "stage", label: "Stage", icon: "Drama", color: "#a855f7" },
+  { type: "speaker", label: "Speaker", icon: "Speaker", color: "#6366f1" },
+  { type: "music", label: "Music", icon: "Music", color: "#ec4899" },
+  { type: "mic", label: "Microphone", icon: "Mic", color: "#f97316" },
+  { type: "camera", label: "Photo Booth", icon: "Camera", color: "#0ea5e9" },
   
-  // Transportation
-  { type: "bus", label: "Bus Stop", icon: "Bus", color: "#f59e0b" },
-  { type: "car", label: "Vehicle", icon: "Car", color: "#3b82f6" },
-  { type: "bike", label: "Bike", icon: "Bike", color: "#10b981" },
-  { type: "train", label: "Train", icon: "Train", color: "#6366f1" },
-  { type: "plane", label: "Airport", icon: "Plane", color: "#0ea5e9" },
-  { type: "ship", label: "Boat", icon: "Ship", color: "#06b6d4" },
-  
-  // Sports & Recreation
-  { type: "sports", label: "Sports", icon: "Volleyball", color: "#f97316" },
-  { type: "ball", label: "Ball", icon: "CircleDot", color: "#22c55e" },
-  { type: "gym", label: "Gym", icon: "Dumbbell", color: "#dc2626" },
-  { type: "trophy", label: "Awards", icon: "Trophy", color: "#facc15" },
-  { type: "medal", label: "Medal", icon: "Medal", color: "#f59e0b" },
-  { type: "award", label: "Achievement", icon: "Award", color: "#a855f7" },
-  
-  // Nature & Weather
-  { type: "tree", label: "Trees", icon: "Trees", color: "#22c55e" },
-  { type: "flower", label: "Garden", icon: "Flower2", color: "#ec4899" },
-  { type: "leaf", label: "Nature", icon: "Leaf", color: "#10b981" },
-  { type: "sun", label: "Sunny", icon: "Sun", color: "#facc15" },
-  { type: "moon", label: "Night", icon: "Moon", color: "#6366f1" },
-  { type: "cloud", label: "Cloudy", icon: "Cloud", color: "#94a3b8" },
-  { type: "rain", label: "Rain", icon: "CloudRain", color: "#0ea5e9" },
-  { type: "snow", label: "Snow", icon: "Snowflake", color: "#06b6d4" },
-  { type: "umbrella", label: "Umbrella", icon: "Umbrella", color: "#3b82f6" },
-  
-  // Animals
-  { type: "dog", label: "Dog Area", icon: "Dog", color: "#f59e0b" },
-  { type: "cat", label: "Cat Area", icon: "Cat", color: "#8b5cf6" },
-  { type: "baby", label: "Kids Area", icon: "Baby", color: "#ec4899" },
-  
-  // Communication & Tech
-  { type: "phone", label: "Phone", icon: "Phone", color: "#10b981" },
-  { type: "mail", label: "Mail", icon: "Mail", color: "#3b82f6" },
-  { type: "message", label: "Message", icon: "MessageSquare", color: "#06b6d4" },
-  { type: "megaphone", label: "Announce", icon: "Megaphone", color: "#f97316" },
-  { type: "bell", label: "Alert", icon: "Bell", color: "#ef4444" },
-  { type: "laptop", label: "Computer", icon: "Laptop", color: "#6366f1" },
-  { type: "printer", label: "Printer", icon: "Printer", color: "#64748b" },
-  { type: "book", label: "Library", icon: "Book", color: "#8b5cf6" },
-  
-  // Utilities & Tools
-  { type: "lightbulb", label: "Idea", icon: "Lightbulb", color: "#facc15" },
-  { type: "flame", label: "Fire", icon: "Flame", color: "#ef4444" },
-  { type: "battery", label: "Power", icon: "Battery", color: "#22c55e" },
-  { type: "plug", label: "Charging", icon: "Plug", color: "#10b981" },
-  { type: "radio", label: "Radio", icon: "Radio", color: "#6366f1" },
-  { type: "scissors", label: "Scissors", icon: "Scissors", color: "#64748b" },
-  { type: "wrench", label: "Tools", icon: "Wrench", color: "#f59e0b" },
-  { type: "hammer", label: "Workshop", icon: "Hammer", color: "#dc2626" },
-  { type: "paintbrush", label: "Art", icon: "Paintbrush", color: "#ec4899" },
-  { type: "palette", label: "Paint", icon: "Palette", color: "#a855f7" },
-  { type: "brush", label: "Design", icon: "Brush", color: "#f97316" },
-  
-  // Financial
+  // Payment & Finance
   { type: "creditcard", label: "Payment", icon: "CreditCard", color: "#3b82f6" },
   { type: "wallet", label: "Wallet", icon: "Wallet", color: "#8b5cf6" },
   { type: "dollar", label: "Money", icon: "DollarSign", color: "#22c55e" },
   { type: "coins", label: "Coins", icon: "Coins", color: "#f59e0b" },
   { type: "banknote", label: "Cash", icon: "Banknote", color: "#10b981" },
-  
-  // Time & Scheduling
-  { type: "clock", label: "Clock", icon: "Clock", color: "#6366f1" },
-  { type: "calendar", label: "Calendar", icon: "Calendar", color: "#3b82f6" },
-  { type: "alarm", label: "Alarm", icon: "AlarmClock", color: "#ef4444" },
-  { type: "timer", label: "Timer", icon: "Timer", color: "#f97316" },
-  { type: "hourglass", label: "Wait", icon: "Hourglass", color: "#8b5cf6" },
-  { type: "watch", label: "Watch", icon: "Watch", color: "#64748b" },
   
   // Markers & Highlights
   { type: "pin", label: "Location", icon: "MapPin", color: "#ef4444" },
@@ -165,27 +80,23 @@ export const iconComponents = {
   Drama, Armchair, Utensils, Coffee, WashingMachine,
   DoorOpen, DoorClosed, ParkingSquare, Info, Cross,
   Speaker, Camera, ShoppingBag, ClipboardPen, Shield, Wifi,
-  Music, Mic, Beer, Wine, Pizza, IceCream, Sandwich, Apple,
-  MapPin, Flag, Star, Heart, Zap, Gift, Ticket, Trophy,
-  Users, User, Baby, Dog, Cat, Trees, Flower2, Leaf,
-  Sun, Moon, Cloud, CloudRain, Snowflake, Umbrella,
-  Bus, Car, Bike, Train, Plane, Ship, Ambulance, FireExtinguisher,
-  Book, Laptop, Printer, Phone, Mail, MessageSquare, Bell, Megaphone,
-  Home, Building, Building2, Church, Hotel, Hospital, School, Store,
-  Dumbbell, Volleyball, CircleDot, Medal, Award,
-  Lightbulb, Flame, Battery, Plug, Radio, Tv, Gamepad2,
-  Scissors, Wrench, Hammer, Paintbrush, Palette, Brush,
-  ShoppingCart, CreditCard, Wallet, DollarSign, Coins, Banknote,
-  Clock, Calendar, AlarmClock, Timer, Hourglass, Watch
+  Music, Mic, Pizza, IceCream, Sandwich, Apple,
+  MapPin, Flag, Star, Heart, Zap, Gift, Ticket,
+  Users, User, Ambulance, FireExtinguisher,
+  ShoppingCart, CreditCard, Wallet, DollarSign, Coins, Banknote
 };
 
 interface MapEditorProps {
   mapImageUrl?: string;
   initialIcons?: MapIcon[];
   initialConnectors?: Connector[];
+  initialLayers?: Layer[];
+  initialCurrentLayer?: string;
   availableIconTypes?: IconType[];
   onIconsChange?: (icons: MapIcon[]) => void;
   onConnectorsChange?: (connectors: Connector[]) => void;
+  onLayersChange?: (layers: Layer[]) => void;
+  onCurrentLayerChange?: (currentLayer: string) => void;
   onIconMoveComplete?: (icons: MapIcon[]) => void;
   onConnectorMoveComplete?: (connectors: Connector[]) => void;
   onUndo?: () => void;
@@ -198,9 +109,13 @@ export function MapEditor({
   mapImageUrl = "/campus-map-placeholder.jpg",
   initialIcons = [],
   initialConnectors = [],
+  initialLayers = [{ id: "default", name: "Default", visible: true, locked: false }],
+  initialCurrentLayer = "default",
   availableIconTypes = DEFAULT_ICON_TYPES,
   onIconsChange,
   onConnectorsChange,
+  onLayersChange,
+  onCurrentLayerChange,
   onIconMoveComplete,
   onConnectorMoveComplete,
   onUndo,
@@ -210,18 +125,73 @@ export function MapEditor({
 }: MapEditorProps) {
   const [icons, setIcons] = useState<MapIcon[]>(initialIcons);
   const [connectors, setConnectors] = useState<Connector[]>(initialConnectors);
-  const [layers, setLayers] = useState<Layer[]>([
-    { id: "default", name: "Default", visible: true, locked: false }
-  ]);
-  const [currentLayer, setCurrentLayer] = useState<string>("default");
+  const [layers, setLayers] = useState<Layer[]>(initialLayers);
+  const [currentLayer, setCurrentLayer] = useState<string>(initialCurrentLayer);
+  const [selectedIconIds, setSelectedIconIds] = useState<Set<string>>(new Set());
   const [showLayers, setShowLayers] = useState<boolean>(true);
+  const [layersPanelWidth, setLayersPanelWidth] = useState<number>(224); // Default w-56 = 224px
+  const [isResizing, setIsResizing] = useState<boolean>(false);
+  const resizeStartRef = useRef<{ width: number; mouseX: number }>({ width: 224, mouseX: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Get the first selected icon (for single selection)
+  const selectedIcon = selectedIconIds.size === 1 
+    ? icons.find(icon => selectedIconIds.has(icon.id)) || null
+    : null;
+
+  // Constants for resize limits
+  const MIN_PANEL_WIDTH = 180; // Minimum width in pixels
+  const MAX_PANEL_WIDTH = 400; // Maximum width in pixels
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Store the starting width and mouse position
+    resizeStartRef.current = {
+      width: layersPanelWidth,
+      mouseX: e.clientX,
+    };
+    setIsResizing(true);
+  };
+
+  const handleResizeMove = useCallback((e: MouseEvent) => {
+    if (!isResizing) return;
+    
+    // Calculate the delta (how much the mouse moved)
+    const deltaX = resizeStartRef.current.mouseX - e.clientX;
+    
+    // New width = starting width + delta (moving left increases width)
+    const newWidth = resizeStartRef.current.width + deltaX;
+    
+    // Clamp width between min and max
+    const clampedWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, newWidth));
+    setLayersPanelWidth(clampedWidth);
+  }, [isResizing]);
+
+  const handleResizeEnd = useCallback(() => {
+    setIsResizing(false);
+  }, []);
+
+  // Add event listeners for resize
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
+      
+      return () => {
+        window.removeEventListener('mousemove', handleResizeMove);
+        window.removeEventListener('mouseup', handleResizeEnd);
+      };
+    }
+  }, [isResizing, handleResizeMove, handleResizeEnd]);
 
   const handleExport = () => {
     const mapData = {
       version: "1.0",
       icons,
       connectors,
+      layers,
+      currentLayer,
       exportedAt: new Date().toISOString(),
     };
 
@@ -255,9 +225,15 @@ export function MapEditor({
 
         const updatedIcons = mapData.icons;
         const updatedConnectors = mapData.connectors || [];
+        const updatedLayers = mapData.layers || [
+          { id: "default", name: "Default", visible: true, locked: false }
+        ];
+        const updatedCurrentLayer = mapData.currentLayer || "default";
 
         setIcons(updatedIcons);
         setConnectors(updatedConnectors);
+        setLayers(updatedLayers);
+        setCurrentLayer(updatedCurrentLayer);
         onIconsChange?.(updatedIcons);
         onConnectorsChange?.(updatedConnectors);
         onIconMoveComplete?.(updatedIcons);
@@ -306,6 +282,26 @@ export function MapEditor({
   const handleConnectorsChange = (updatedConnectors: Connector[]) => {
     setConnectors(updatedConnectors);
     onConnectorsChange?.(updatedConnectors);
+  };
+
+  const handleLayersChange = (updatedLayers: Layer[]) => {
+    setLayers(updatedLayers);
+    onLayersChange?.(updatedLayers);
+  };
+
+  const handleCurrentLayerChange = (updatedCurrentLayer: string) => {
+    setCurrentLayer(updatedCurrentLayer);
+    onCurrentLayerChange?.(updatedCurrentLayer);
+  };
+
+  const handleIconUpdate = (updates: Partial<MapIcon>) => {
+    if (!selectedIcon) return;
+    
+    const updatedIcons = icons.map(icon =>
+      icon.id === selectedIcon.id ? { ...icon, ...updates } : icon
+    );
+    handleIconsChange(updatedIcons);
+    onIconMoveComplete?.(updatedIcons);
   };
 
   return (
@@ -368,13 +364,30 @@ export function MapEditor({
           onRedo={onRedo}
           canUndo={canUndo}
           canRedo={canRedo}
+          onSelectionChange={setSelectedIconIds}
         />
       </div>
 
-      {/* Layers Panel - Right Sidebar (Collapsible) */}
-      <div className="border rounded-lg bg-card shrink-0 flex">
+      {/* Layers Panel - Right Sidebar (Collapsible & Resizable) */}
+      <div 
+        className="border rounded-lg bg-card shrink-0 flex relative"
+        style={{ 
+          width: showLayers ? `${layersPanelWidth + 40}px` : '40px' // +40px for toggle button width
+        }}
+      >
+        {/* Resize handle - only visible when panel is open */}
+        {showLayers && (
+          <div
+            className="absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize hover:bg-primary/50 active:bg-primary transition-colors z-10"
+            onMouseDown={handleResizeStart}
+            style={{
+              cursor: isResizing ? 'ew-resize' : 'ew-resize',
+            }}
+          />
+        )}
+
         {/* Toggle button sidebar - always visible */}
-        <div className="w-12 flex flex-col items-center p-2 border-r">
+        <div className="w-10 flex flex-col items-center p-1">
           <Button
             variant="ghost"
             size="icon"
@@ -392,12 +405,14 @@ export function MapEditor({
 
         {/* Layers panel content (collapsible) */}
         {showLayers && (
-          <div className="w-56">
-            <LayersPanel
+          <div style={{ width: `${layersPanelWidth}px` }}>
+            <SidebarPanel
               layers={layers}
-              onLayersChange={setLayers}
+              onLayersChange={handleLayersChange}
               currentLayer={currentLayer}
-              onCurrentLayerChange={setCurrentLayer}
+              onCurrentLayerChange={handleCurrentLayerChange}
+              selectedIcon={selectedIcon}
+              onIconUpdate={handleIconUpdate}
             />
           </div>
         )}
