@@ -13,6 +13,7 @@ interface MapIconProps {
   isConnectMode?: boolean;
   isConnectStart?: boolean;
   isSelected?: boolean;
+  isDrawingMode?: boolean;
   zIndex?: number;
 }
 
@@ -25,6 +26,7 @@ export function MapIcon({
   isConnectMode = false,
   isConnectStart = false,
   isSelected = false,
+  isDrawingMode = false,
   zIndex = 0,
 }: MapIconProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -38,6 +40,11 @@ export function MapIcon({
   const currentRotation = icon.rotation || 0;
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    // Prevent all interaction in drawing mode
+    if (isDrawingMode) {
+      return;
+    }
+    
     // In connect mode, handle clicks instead of dragging
     if (isConnectMode) {
       e.preventDefault();
@@ -129,7 +136,7 @@ export function MapIcon({
   return (
     <div
       className={`absolute group map-icon-container ${
-        isConnectMode ? "cursor-pointer" : "cursor-move"
+        isDrawingMode ? "pointer-events-none opacity-50" : isConnectMode ? "cursor-pointer" : "cursor-move"
       }`}
       style={{
         left: `${icon.position.x}%`,

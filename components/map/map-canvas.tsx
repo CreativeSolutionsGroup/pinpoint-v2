@@ -139,11 +139,11 @@ export function MapCanvas({
     if (isDrawingMode && e.button === 0) {
       e.preventDefault();
       e.stopPropagation();
-      if (!canvasRef.current) return;
+      if (!containerRef.current) return;
       
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = ((e.clientX - rect.left - pan.x) / (rect.width * zoom)) * 100;
-      const y = ((e.clientY - rect.top - pan.y) / (rect.height * zoom)) * 100;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left - pan.x) / zoom / rect.width) * 100;
+      const y = ((e.clientY - rect.top - pan.y) / zoom / rect.height) * 100;
       
       console.log('Drawing started:', { x, y, tool: selectedDrawingTool });
       
@@ -202,10 +202,10 @@ export function MapCanvas({
 
   const handlePanMove = useCallback((e: MouseEvent) => {
     // Handle drawing mode
-    if (isDrawingMode && currentDrawing && drawingStart && canvasRef.current) {
-      const rect = canvasRef.current.getBoundingClientRect();
-      const x = ((e.clientX - rect.left - pan.x) / (rect.width * zoom)) * 100;
-      const y = ((e.clientY - rect.top - pan.y) / (rect.height * zoom)) * 100;
+    if (isDrawingMode && currentDrawing && drawingStart && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left - pan.x) / zoom / rect.width) * 100;
+      const y = ((e.clientY - rect.top - pan.y) / zoom / rect.height) * 100;
       
       setDrawingCurrent({ x, y });
       
@@ -226,7 +226,7 @@ export function MapCanvas({
       const selY = e.clientY - rect.top;
       setSelectionEnd({ x: selX, y: selY });
     }
-  }, [isPanning, panStart, isSelecting, isDrawingMode, currentDrawing, drawingStart, drawingCurrent, selectedDrawingTool, drawingColor, strokeWidth, fillColor, enableFill, canvasRef, pan, zoom]);
+  }, [isPanning, panStart, isSelecting, isDrawingMode, currentDrawing, drawingStart, selectedDrawingTool, containerRef, pan, zoom]);
 
   const handlePanEnd = useCallback(() => {
     // Finalize drawing
@@ -361,15 +361,15 @@ export function MapCanvas({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     
-    if (!canvasRef.current || !onAddIcon) return;
+    if (!containerRef.current || !onAddIcon) return;
 
     try {
       const iconType: IconType = JSON.parse(e.dataTransfer.getData("application/json"));
-      const rect = canvasRef.current.getBoundingClientRect();
+      const rect = containerRef.current.getBoundingClientRect();
       
       // Calculate position accounting for zoom and pan
-      const x = ((e.clientX - rect.left - pan.x) / (rect.width * zoom)) * 100;
-      const y = ((e.clientY - rect.top - pan.y) / (rect.height * zoom)) * 100;
+      const x = ((e.clientX - rect.left - pan.x) / zoom / rect.width) * 100;
+      const y = ((e.clientY - rect.top - pan.y) / zoom / rect.height) * 100;
 
       // Clamp position
       const clampedX = Math.max(0, Math.min(100, x));
@@ -871,7 +871,7 @@ export function MapCanvas({
           <img
             src={mapImageUrl}
             alt="Campus Map"
-            className="w-full h-full object-contain pointer-events-none select-none"
+            className="w-full h-full object-fill pointer-events-none select-none"
             draggable={false}
           />
 
@@ -1167,6 +1167,7 @@ export function MapCanvas({
                 isConnectMode={isConnectMode}
                 isConnectStart={connectStartIconId === icon.id}
                 isSelected={selectedIconIds.has(icon.id)}
+                isDrawingMode={isDrawingMode}
               />
             );
           })}
