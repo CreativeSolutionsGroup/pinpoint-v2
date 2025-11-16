@@ -44,10 +44,40 @@ export interface Connector {
   description?: string;
 }
 
+export type DrawingTool = "pen" | "line" | "rectangle" | "circle" | "ellipse" | "arrow" | "text";
+
+export interface DrawingPath {
+  points: Position[]; // For pen tool
+}
+
+export interface Drawing {
+  id: string;
+  tool: DrawingTool;
+  color: string;
+  strokeWidth: number;
+  fill?: string; // Fill color for shapes (optional)
+  opacity?: number; // 0-1 (default 1)
+  // Shape-specific properties
+  path?: DrawingPath; // For pen tool
+  startPoint?: Position; // For line, arrow
+  endPoint?: Position; // For line, arrow
+  x?: number; // Top-left x for rectangle, center x for circle/ellipse
+  y?: number; // Top-left y for rectangle, center y for circle/ellipse
+  width?: number; // For rectangle
+  height?: number; // For rectangle
+  radius?: number; // For circle
+  radiusX?: number; // For ellipse
+  radiusY?: number; // For ellipse
+  text?: string; // For text tool
+  fontSize?: number; // For text tool
+  layer?: string; // Layer name (default "default")
+}
+
 export interface MapData {
   id: string;
   name: string;
   imageUrl: string;
   icons: MapIcon[];
   connectors?: Connector[];
+  drawings?: Drawing[];
 }

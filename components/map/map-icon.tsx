@@ -3,16 +3,11 @@
 import { MapIcon as MapIconType } from "./types";
 import { useState, useEffect, useRef } from "react";
 import { iconComponents } from "./map-editor";
-import { IconEditMenu } from "./icon-edit-menu";
 
 interface MapIconProps {
   icon: MapIconType;
   onMove: (id: string, position: { x: number; y: number }) => void;
   onMoveComplete?: (id: string, position: { x: number; y: number }) => void;
-  onUpdate: (id: string, updates: Partial<MapIconType>) => void;
-  onDelete: (id: string) => void;
-  onCopy?: (id: string) => void;
-  onDuplicate?: (id: string) => void;
   onClick?: (iconId: string) => void;
   onDragStart?: (id: string) => void;
   isConnectMode?: boolean;
@@ -25,10 +20,6 @@ export function MapIcon({
   icon, 
   onMove, 
   onMoveComplete, 
-  onUpdate, 
-  onDelete,
-  onCopy,
-  onDuplicate,
   onClick,
   onDragStart,
   isConnectMode = false,
@@ -38,7 +29,6 @@ export function MapIcon({
 }: MapIconProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const finalPositionRef = useRef({ x: icon.position.x, y: icon.position.y });
   const mouseDownTimeRef = useRef<number>(0);
@@ -184,18 +174,6 @@ export function MapIcon({
           {icon.label}
         </div>
       </div>
-      
-      {/* Menu button positioned outside all transforms, at top-right of where circular icon appears */}
-      {(isHovered || isMenuOpen) && !isDragging && !isConnectMode && (
-        <IconEditMenu
-          icon={icon}
-          onUpdate={(updates) => onUpdate(icon.id, updates)}
-          onDelete={() => onDelete(icon.id)}
-          onCopy={() => onCopy?.(icon.id)}
-          onDuplicate={() => onDuplicate?.(icon.id)}
-          onOpenChange={setIsMenuOpen}
-        />
-      )}
     </div>
   );
 }

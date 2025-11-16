@@ -8,4 +8,4 @@ export { ConnectorEditMenu } from "./connector-edit-menu";
 export { SidebarPanel } from "./sidebar-panel";
 export { IconOptionsPanel } from "./icon-options-panel";
 export { LayersPanel } from "./layers-panel";
-export type { MapIcon as MapIconType, IconType, Position, MapData, Connector, ConnectorStyle, Layer } from "./types";
+export type { MapIcon as MapIconType, IconType, Position, MapData, Connector, ConnectorStyle, Layer, Drawing, DrawingTool } from "./types";

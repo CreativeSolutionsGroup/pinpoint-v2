@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { MapCanvas } from "./map-canvas";
 import { IconPalette } from "./icon-palette";
 import { SidebarPanel } from "./sidebar-panel";
-import { MapIcon, IconType, Connector, Layer } from "./types";
+import { MapIcon, IconType, Connector, Layer, Drawing, DrawingTool } from "./types";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Download, Upload, ChevronLeft, ChevronRight } from "lucide-react";
@@ -92,6 +92,7 @@ interface MapEditorProps {
   initialConnectors?: Connector[];
   initialLayers?: Layer[];
   initialCurrentLayer?: string;
+  initialDrawings?: Drawing[];
   availableIconTypes?: IconType[];
   onIconsChange?: (icons: MapIcon[]) => void;
   onConnectorsChange?: (connectors: Connector[]) => void;
@@ -99,6 +100,7 @@ interface MapEditorProps {
   onCurrentLayerChange?: (currentLayer: string) => void;
   onIconMoveComplete?: (icons: MapIcon[]) => void;
   onConnectorMoveComplete?: (connectors: Connector[]) => void;
+  onDrawingsChange?: (drawings: Drawing[]) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -111,6 +113,7 @@ export function MapEditor({
   initialConnectors = [],
   initialLayers = [{ id: "default", name: "Default", visible: true, locked: false }],
   initialCurrentLayer = "default",
+  initialDrawings = [],
   availableIconTypes = DEFAULT_ICON_TYPES,
   onIconsChange,
   onConnectorsChange,
@@ -118,6 +121,7 @@ export function MapEditor({
   onCurrentLayerChange,
   onIconMoveComplete,
   onConnectorMoveComplete,
+  onDrawingsChange,
   onUndo,
   onRedo,
   canUndo = false,
@@ -133,6 +137,46 @@ export function MapEditor({
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const resizeStartRef = useRef<{ width: number; mouseX: number }>({ width: 224, mouseX: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Drawing state
+  const [drawings, setDrawings] = useState<Drawing[]>(initialDrawings);
+  const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
+  const [selectedDrawingTool, setSelectedDrawingTool] = useState<DrawingTool>("pen");
+  const [drawingColor, setDrawingColor] = useState<string>("#000000");
+  const [strokeWidth, setStrokeWidth] = useState<number>(1.5);
+  const [fillColor, setFillColor] = useState<string>("#ffffff");
+  const [enableFill, setEnableFill] = useState<boolean>(false);
+
+  // Sync state with parent when initial props change (for undo/redo)
+  // Use JSON.stringify to compare by value, not reference
+  const initialIconsJson = JSON.stringify(initialIcons);
+  const initialConnectorsJson = JSON.stringify(initialConnectors);
+  const initialLayersJson = JSON.stringify(initialLayers);
+  const initialDrawingsJson = JSON.stringify(initialDrawings);
+
+  useEffect(() => {
+    setIcons(initialIcons);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialIconsJson]);
+
+  useEffect(() => {
+    setConnectors(initialConnectors);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialConnectorsJson]);
+
+  useEffect(() => {
+    setLayers(initialLayers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialLayersJson]);
+
+  useEffect(() => {
+    setCurrentLayer(initialCurrentLayer);
+  }, [initialCurrentLayer]);
+
+  useEffect(() => {
+    setDrawings(initialDrawings);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialDrawingsJson]);
 
   // Get the first selected icon (for single selection)
   const selectedIcon = selectedIconIds.size === 1 
@@ -304,6 +348,70 @@ export function MapEditor({
     onIconMoveComplete?.(updatedIcons);
   };
 
+  const handleIconDelete = () => {
+    if (!selectedIcon) return;
+    
+    const updatedIcons = icons.filter(icon => icon.id !== selectedIcon.id);
+    handleIconsChange(updatedIcons);
+    onIconMoveComplete?.(updatedIcons);
+    setSelectedIconIds(new Set()); // Clear selection after delete
+  };
+
+  // Get all selected icons for group operations
+  const selectedIcons = Array.from(selectedIconIds)
+    .map(id => icons.find(icon => icon.id === id))
+    .filter((icon): icon is MapIcon => icon !== undefined);
+
+  const handleGroupUpdate = (iconId: string, updates: Partial<MapIcon>) => {
+    const updatedIcons = icons.map(icon =>
+      icon.id === iconId ? { ...icon, ...updates } : icon
+    );
+    handleIconsChange(updatedIcons);
+    onIconMoveComplete?.(updatedIcons);
+  };
+
+  const handleGroupDelete = () => {
+    if (selectedIconIds.size === 0) return;
+    
+    const updatedIcons = icons.filter(icon => !selectedIconIds.has(icon.id));
+    handleIconsChange(updatedIcons);
+    onIconMoveComplete?.(updatedIcons);
+    setSelectedIconIds(new Set()); // Clear selection after delete
+  };
+
+  // Drawing handlers
+  const handleDrawingAdd = (drawing: Drawing) => {
+    const newDrawings = [...drawings, drawing];
+    setDrawings(newDrawings);
+    onDrawingsChange?.(newDrawings);
+  };
+
+  const handleDrawingDelete = (id: string) => {
+    const newDrawings = drawings.filter(d => d.id !== id);
+    setDrawings(newDrawings);
+    onDrawingsChange?.(newDrawings);
+  };
+
+  const handleDrawingUpdate = (id: string, updates: Partial<Drawing>) => {
+    const newDrawings = drawings.map(d => d.id === id ? { ...d, ...updates } : d);
+    setDrawings(newDrawings);
+    onDrawingsChange?.(newDrawings);
+  };
+
+  const handleClearAllDrawings = () => {
+    setDrawings([]);
+    onDrawingsChange?.([]);
+  };
+
+  const handleDrawingModeToggle = () => {
+    setIsDrawingMode(!isDrawingMode);
+    if (!isDrawingMode) {
+      toast.info("Drawing Mode Enabled", {
+        description: "Click and drag on the canvas to draw"
+      });
+    }
+  };
+
   return (
     <div className="flex h-full gap-2">
       {/* Icon Palette - Left Sidebar */}
@@ -365,6 +473,14 @@ export function MapEditor({
           canUndo={canUndo}
           canRedo={canRedo}
           onSelectionChange={setSelectedIconIds}
+          drawings={drawings}
+          isDrawingMode={isDrawingMode}
+          selectedDrawingTool={selectedDrawingTool}
+          drawingColor={drawingColor}
+          strokeWidth={strokeWidth}
+          fillColor={fillColor}
+          enableFill={enableFill}
+          onDrawingAdd={handleDrawingAdd}
         />
       </div>
 
@@ -405,14 +521,34 @@ export function MapEditor({
 
         {/* Layers panel content (collapsible) */}
         {showLayers && (
-          <div style={{ width: `${layersPanelWidth}px` }}>
+          <div style={{ width: `${layersPanelWidth}px` }} className="h-full">
             <SidebarPanel
               layers={layers}
               onLayersChange={handleLayersChange}
               currentLayer={currentLayer}
               onCurrentLayerChange={handleCurrentLayerChange}
               selectedIcon={selectedIcon}
+              selectedIcons={selectedIcons}
               onIconUpdate={handleIconUpdate}
+              onGroupUpdate={handleGroupUpdate}
+              onIconDelete={handleIconDelete}
+              onGroupDelete={handleGroupDelete}
+              drawings={drawings}
+              selectedDrawingTool={selectedDrawingTool}
+              onDrawingToolChange={setSelectedDrawingTool}
+              drawingColor={drawingColor}
+              onDrawingColorChange={setDrawingColor}
+              strokeWidth={strokeWidth}
+              onStrokeWidthChange={setStrokeWidth}
+              fillColor={fillColor}
+              onFillColorChange={setFillColor}
+              enableFill={enableFill}
+              onEnableFillChange={setEnableFill}
+              isDrawing={isDrawingMode}
+              onDrawingModeToggle={handleDrawingModeToggle}
+              onDrawingDelete={handleDrawingDelete}
+              onDrawingUpdate={handleDrawingUpdate}
+              onClearAllDrawings={handleClearAllDrawings}
             />
           </div>
         )}

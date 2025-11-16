@@ -3,12 +3,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { MapIcon as MapIconComponent } from "./map-icon";
 import { MapConnector } from "./map-connector";
-import { MapIcon as MapIconType, IconType, Connector, Layer } from "./types";
+import { MapIcon as MapIconType, IconType, Connector, Layer, Drawing, DrawingTool, Position } from "./types";
 import { 
-  ZoomIn, ZoomOut, Maximize2, Link, Undo, Redo, Grid3x3, Printer,
-  AlignHorizontalSpaceAround, AlignVerticalSpaceAround,
-  AlignStartVertical, AlignCenterVertical, AlignEndVertical,
-  AlignStartHorizontal, AlignCenterHorizontal, AlignEndHorizontal
+  ZoomIn, ZoomOut, Maximize2, Link, Undo, Redo, Grid3x3, Printer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -30,6 +27,15 @@ interface MapCanvasProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  // Drawing props
+  drawings?: Drawing[];
+  isDrawingMode?: boolean;
+  selectedDrawingTool?: DrawingTool;
+  drawingColor?: string;
+  strokeWidth?: number;
+  fillColor?: string;
+  enableFill?: boolean;
+  onDrawingAdd?: (drawing: Drawing) => void;
 }
 
 export function MapCanvas({
@@ -47,6 +53,14 @@ export function MapCanvas({
   onRedo,
   canUndo = false,
   canRedo = false,
+  drawings = [],
+  isDrawingMode = false,
+  selectedDrawingTool = "pen",
+  drawingColor = "#000000",
+  strokeWidth = 2,
+  fillColor = "#ffffff",
+  enableFill = false,
+  onDrawingAdd,
 }: MapCanvasProps) {
   // Filter icons based on layer visibility and sort by layer order
   const visibleLayers = new Set(layers.filter(l => l.visible).map(l => l.id));
@@ -95,6 +109,12 @@ export function MapCanvas({
   const canvasRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragStartPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
+  
+  // Drawing state
+  const [currentDrawing, setCurrentDrawing] = useState<Drawing | null>(null);
+  const [drawingStart, setDrawingStart] = useState<Position | null>(null);
+  const [drawingCurrent, setDrawingCurrent] = useState<Position | null>(null);
+  const [drawingPath, setDrawingPath] = useState<Position[]>([]);
 
   // Notify parent of selection changes
   useEffect(() => {
@@ -115,6 +135,36 @@ export function MapCanvas({
   };
 
   const handlePanStart = (e: React.MouseEvent) => {
+    // If in drawing mode, start drawing instead of panning
+    if (isDrawingMode && e.button === 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!canvasRef.current) return;
+      
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left - pan.x) / (rect.width * zoom)) * 100;
+      const y = ((e.clientY - rect.top - pan.y) / (rect.height * zoom)) * 100;
+      
+      console.log('Drawing started:', { x, y, tool: selectedDrawingTool });
+      
+      setDrawingStart({ x, y });
+      setDrawingCurrent({ x, y });
+      
+      if (selectedDrawingTool === "pen") {
+        setDrawingPath([{ x, y }]);
+      }
+      
+      setCurrentDrawing({
+        id: `drawing-${Date.now()}`,
+        tool: selectedDrawingTool,
+        color: drawingColor,
+        strokeWidth,
+        fill: enableFill ? fillColor : undefined,
+        opacity: 1,
+      });
+      return;
+    }
+    
     // Allow panning with left click (unless clicking on an icon), middle mouse, or Shift + left click
     if (e.button === 0 || e.button === 1) {
       // Only start panning if clicking on the background (not an icon)
@@ -151,6 +201,20 @@ export function MapCanvas({
   };
 
   const handlePanMove = useCallback((e: MouseEvent) => {
+    // Handle drawing mode
+    if (isDrawingMode && currentDrawing && drawingStart && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left - pan.x) / (rect.width * zoom)) * 100;
+      const y = ((e.clientY - rect.top - pan.y) / (rect.height * zoom)) * 100;
+      
+      setDrawingCurrent({ x, y });
+      
+      if (selectedDrawingTool === "pen") {
+        setDrawingPath(prev => [...prev, { x, y }]);
+      }
+      return;
+    }
+    
     if (isPanning) {
       setPan({
         x: e.clientX - panStart.x,
@@ -162,9 +226,59 @@ export function MapCanvas({
       const selY = e.clientY - rect.top;
       setSelectionEnd({ x: selX, y: selY });
     }
-  }, [isPanning, panStart, isSelecting]);
+  }, [isPanning, panStart, isSelecting, isDrawingMode, currentDrawing, drawingStart, drawingCurrent, selectedDrawingTool, drawingColor, strokeWidth, fillColor, enableFill, canvasRef, pan, zoom]);
 
   const handlePanEnd = useCallback(() => {
+    // Finalize drawing
+    if (isDrawingMode && currentDrawing && drawingStart && drawingCurrent && onDrawingAdd) {
+      console.log('Drawing ended:', { drawingStart, drawingCurrent, tool: selectedDrawingTool });
+      const finalDrawing: Drawing = { ...currentDrawing };
+      
+      if (selectedDrawingTool === "pen" && drawingPath.length > 1) {
+        finalDrawing.path = { points: drawingPath };
+      } else if (selectedDrawingTool === "line") {
+        finalDrawing.startPoint = drawingStart;
+        finalDrawing.endPoint = drawingCurrent;
+      } else if (selectedDrawingTool === "rectangle") {
+        finalDrawing.x = Math.min(drawingStart.x, drawingCurrent.x);
+        finalDrawing.y = Math.min(drawingStart.y, drawingCurrent.y);
+        finalDrawing.width = Math.abs(drawingCurrent.x - drawingStart.x);
+        finalDrawing.height = Math.abs(drawingCurrent.y - drawingStart.y);
+      } else if (selectedDrawingTool === "circle") {
+        finalDrawing.x = drawingStart.x;
+        finalDrawing.y = drawingStart.y;
+        // Use separate radii for x and y to maintain circular appearance
+        finalDrawing.radiusX = Math.abs(drawingCurrent.x - drawingStart.x);
+        finalDrawing.radiusY = Math.abs(drawingCurrent.y - drawingStart.y);
+      } else if (selectedDrawingTool === "arrow") {
+        finalDrawing.startPoint = drawingStart;
+        finalDrawing.endPoint = drawingCurrent;
+      }
+      
+      // Only add drawing if it has some size (not just a click)
+      const hasSize = selectedDrawingTool === "pen" 
+        ? drawingPath.length > 1
+        : drawingStart && drawingCurrent && (
+            Math.abs(drawingCurrent.x - drawingStart.x) > 0.5 || 
+            Math.abs(drawingCurrent.y - drawingStart.y) > 0.5
+          );
+      
+      if (hasSize) {
+        console.log('✅ Adding drawing:', finalDrawing);
+        onDrawingAdd(finalDrawing);
+        toast.success("Drawing added");
+      } else {
+        console.log('❌ Drawing too small, not added');
+      }
+      
+      // Reset drawing state
+      setCurrentDrawing(null);
+      setDrawingStart(null);
+      setDrawingCurrent(null);
+      setDrawingPath([]);
+      return;
+    }
+    
     setIsPanning(false);
     
     // Finalize selection
@@ -195,7 +309,7 @@ export function MapCanvas({
       setSelectedIconIds(selected);
       toast.success(`${selected.size} icon${selected.size !== 1 ? 's' : ''} selected`);
     }
-  }, [isSelecting, selectionStart, selectionEnd, icons, zoom, pan]);
+  }, [isSelecting, selectionStart, selectionEnd, icons, zoom, pan, isDrawingMode, currentDrawing, drawingStart, drawingCurrent, onDrawingAdd, selectedDrawingTool, drawingPath]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!canvasRef.current) return;
@@ -378,29 +492,6 @@ export function MapCanvas({
     }
   };
 
-  const handleIconUpdate = (id: string, updates: Partial<MapIconType>) => {
-    const updatedIcons = icons.map((icon) =>
-      icon.id === id ? { ...icon, ...updates } : icon
-    );
-    onIconsChange(updatedIcons);
-    onIconMoveComplete?.(updatedIcons); // Save to history when updating properties
-  };
-
-  const handleIconDelete = (id: string) => {
-    const updatedIcons = icons.filter((icon) => icon.id !== id);
-    onIconsChange(updatedIcons);
-    onIconMoveComplete?.(updatedIcons); // Also save to history when deleting
-    
-    // Also delete any connectors connected to this icon
-    if (onConnectorsChange) {
-      const updatedConnectors = connectors.filter(
-        (conn) => conn.startIconId !== id && conn.endIconId !== id
-      );
-      onConnectorsChange(updatedConnectors);
-      onConnectorMoveComplete?.(updatedConnectors);
-    }
-  };
-
   const handleIconClick = (iconId: string) => {
     if (isConnectMode) {
       // Connect mode logic
@@ -481,34 +572,6 @@ export function MapCanvas({
   const toggleConnectMode = () => {
     setIsConnectMode(!isConnectMode);
     setConnectStartIconId(null);
-  };
-
-  const handleIconCopy = (id: string) => {
-    const iconToCopy = icons.find((icon) => icon.id === id);
-    if (iconToCopy) {
-      setCopiedIcon(iconToCopy);
-      toast.success("Icon Copied", {
-        description: "Press Ctrl+V to paste the icon."
-      });
-    }
-  };
-
-  const handleIconDuplicate = (id: string) => {
-    const iconToDuplicate = icons.find((icon) => icon.id === id);
-    if (iconToDuplicate) {
-      const newIcon: MapIconType = {
-        ...iconToDuplicate,
-        id: `icon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        position: {
-          x: Math.min(iconToDuplicate.position.x + 5, 95),
-          y: Math.min(iconToDuplicate.position.y + 5, 95),
-        },
-      };
-      const updatedIcons = [...icons, newIcon];
-      onIconsChange(updatedIcons);
-      onIconMoveComplete?.(updatedIcons);
-      toast.success("Icon Duplicated");
-    }
   };
 
   const handlePaste = useCallback(() => {
@@ -593,54 +656,6 @@ export function MapCanvas({
     toast.success(`${count} icon${count !== 1 ? 's' : ''} deleted`);
   }, [selectedIconIds, icons, connectors, onIconsChange, onIconMoveComplete, onConnectorsChange, onConnectorMoveComplete]);
 
-  // Alignment functions
-  const handleAlign = useCallback((direction: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
-    if (selectedIconIds.size < 2) {
-      toast.error("Select at least 2 icons to align");
-      return;
-    }
-
-    const selectedIcons = icons.filter(icon => selectedIconIds.has(icon.id));
-    
-    let updatedIcons = [...icons];
-    
-    if (direction === 'left') {
-      const minX = Math.min(...selectedIcons.map(icon => icon.position.x));
-      updatedIcons = icons.map(icon =>
-        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, x: minX } } : icon
-      );
-    } else if (direction === 'center') {
-      const avgX = selectedIcons.reduce((sum, icon) => sum + icon.position.x, 0) / selectedIcons.length;
-      updatedIcons = icons.map(icon =>
-        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, x: avgX } } : icon
-      );
-    } else if (direction === 'right') {
-      const maxX = Math.max(...selectedIcons.map(icon => icon.position.x));
-      updatedIcons = icons.map(icon =>
-        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, x: maxX } } : icon
-      );
-    } else if (direction === 'top') {
-      const minY = Math.min(...selectedIcons.map(icon => icon.position.y));
-      updatedIcons = icons.map(icon =>
-        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, y: minY } } : icon
-      );
-    } else if (direction === 'middle') {
-      const avgY = selectedIcons.reduce((sum, icon) => sum + icon.position.y, 0) / selectedIcons.length;
-      updatedIcons = icons.map(icon =>
-        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, y: avgY } } : icon
-      );
-    } else if (direction === 'bottom') {
-      const maxY = Math.max(...selectedIcons.map(icon => icon.position.y));
-      updatedIcons = icons.map(icon =>
-        selectedIconIds.has(icon.id) ? { ...icon, position: { ...icon.position, y: maxY } } : icon
-      );
-    }
-
-    onIconsChange(updatedIcons);
-    onIconMoveComplete?.(updatedIcons);
-    toast.success(`Aligned ${selectedIconIds.size} icons`);
-  }, [selectedIconIds, icons, onIconsChange, onIconMoveComplete]);
-
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore keypresses when typing in an input field
@@ -696,9 +711,9 @@ export function MapCanvas({
     };
   }, [handleCopy, handlePaste, handleDeleteSelected, onUndo, onRedo, isConnectMode]);
 
-  // Handle panning and selecting with mouse
+  // Handle panning, selecting, and drawing with mouse
   useEffect(() => {
-    if (isPanning || isSelecting) {
+    if (isPanning || isSelecting || currentDrawing) {
       window.addEventListener("mousemove", handlePanMove);
       window.addEventListener("mouseup", handlePanEnd);
     }
@@ -707,7 +722,7 @@ export function MapCanvas({
       window.removeEventListener("mousemove", handlePanMove);
       window.removeEventListener("mouseup", handlePanEnd);
     };
-  }, [isPanning, isSelecting, handlePanMove, handlePanEnd]);
+  }, [isPanning, isSelecting, currentDrawing, handlePanMove, handlePanEnd]);
 
   return (
     <div id="map-canvas-print" className="relative w-full h-full bg-muted rounded-lg overflow-hidden">
@@ -814,69 +829,8 @@ export function MapCanvas({
           onClick={() => setSnapToGrid(!snapToGrid)}
           title="Snap to Grid"
         >
-          <AlignHorizontalSpaceAround className="h-3.5 w-3.5" />
+          <Maximize2 className="h-3.5 w-3.5" />
         </Button>
-
-        {/* Alignment Tools - only show when multiple icons selected */}
-        {selectedIconIds.size >= 2 && (
-          <>
-            <div className="h-px bg-border my-1" />
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => handleAlign('left')}
-              title="Align Left"
-            >
-              <AlignStartHorizontal className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => handleAlign('center')}
-              title="Align Center"
-            >
-              <AlignCenterHorizontal className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => handleAlign('right')}
-              title="Align Right"
-            >
-              <AlignEndHorizontal className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => handleAlign('top')}
-              title="Align Top"
-            >
-              <AlignStartVertical className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => handleAlign('middle')}
-              title="Align Middle"
-            >
-              <AlignCenterVertical className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="secondary"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => handleAlign('bottom')}
-              title="Align Bottom"
-            >
-              <AlignEndVertical className="h-3.5 w-3.5" />
-            </Button>
-          </>
-        )}
       </div>
 
       {/* Canvas */}
@@ -884,7 +838,7 @@ export function MapCanvas({
         ref={containerRef}
         className="w-full h-full overflow-hidden relative"
         onMouseDown={handlePanStart}
-        style={{ cursor: isPanning ? "grabbing" : "grab" }}
+        style={{ cursor: isDrawingMode ? "crosshair" : isPanning ? "grabbing" : "grab" }}
       >
         {/* Selection Box - positioned relative to viewport, not canvas */}
         {isSelecting && (
@@ -972,6 +926,228 @@ export function MapCanvas({
             </g>
           </svg>
 
+          {/* Drawings Layer - SVG overlay */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            style={{ pointerEvents: isDrawingMode ? "auto" : "none" }}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            {/* Render completed drawings */}
+            {drawings.map((drawing) => {
+              const fillStyle = drawing.fill && drawing.fill !== "transparent" ? drawing.fill : "none";
+              const opacity = drawing.opacity ?? 1;
+
+              if (drawing.tool === "pen" && drawing.path) {
+                const pathData = drawing.path.points
+                  .map((point, i) => `${i === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+                  .join(" ");
+                return (
+                  <path
+                    key={drawing.id}
+                    d={pathData}
+                    stroke={drawing.color}
+                    strokeWidth={drawing.strokeWidth / zoom}
+                    fill="none"
+                    opacity={opacity}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                );
+              }
+
+              if (drawing.tool === "line" && drawing.startPoint && drawing.endPoint) {
+                return (
+                  <line
+                    key={drawing.id}
+                    x1={drawing.startPoint.x}
+                    y1={drawing.startPoint.y}
+                    x2={drawing.endPoint.x}
+                    y2={drawing.endPoint.y}
+                    stroke={drawing.color}
+                    strokeWidth={drawing.strokeWidth / zoom}
+                    opacity={opacity}
+                    strokeLinecap="round"
+                  />
+                );
+              }
+
+              if (drawing.tool === "rectangle" && drawing.x !== undefined && drawing.y !== undefined && drawing.width && drawing.height) {
+                return (
+                  <rect
+                    key={drawing.id}
+                    x={drawing.x}
+                    y={drawing.y}
+                    width={drawing.width}
+                    height={drawing.height}
+                    stroke={drawing.color}
+                    strokeWidth={drawing.strokeWidth / zoom}
+                    fill={fillStyle}
+                    opacity={opacity}
+                  />
+                );
+              }
+
+              if (drawing.tool === "circle" && drawing.x !== undefined && drawing.y !== undefined) {
+                // Use ellipse with separate radii to maintain circular appearance
+                const rx = drawing.radiusX ?? drawing.radius ?? 0;
+                const ry = drawing.radiusY ?? drawing.radius ?? 0;
+                
+                return (
+                  <ellipse
+                    key={drawing.id}
+                    cx={drawing.x}
+                    cy={drawing.y}
+                    rx={rx}
+                    ry={ry}
+                    stroke={drawing.color}
+                    strokeWidth={drawing.strokeWidth / zoom}
+                    fill={fillStyle}
+                    opacity={opacity}
+                  />
+                );
+              }
+
+              if (drawing.tool === "arrow" && drawing.startPoint && drawing.endPoint) {
+                const dx = drawing.endPoint.x - drawing.startPoint.x;
+                const dy = drawing.endPoint.y - drawing.startPoint.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                
+                // Scale arrow size based on stroke width, with minimum size
+                const arrowLength = Math.max(2, drawing.strokeWidth * 3);
+                const arrowWidth = arrowLength * 0.7;
+                
+                // Shorten the line so it ends at the base of the arrowhead
+                const shortenBy = arrowLength * 0.3; // Stop line before arrow tip
+                const ratio = Math.max(0, (length - shortenBy) / length);
+                const lineEndX = drawing.startPoint.x + dx * ratio;
+                const lineEndY = drawing.startPoint.y + dy * ratio;
+                
+                return (
+                  <g key={drawing.id} opacity={opacity}>
+                    <line
+                      x1={drawing.startPoint.x}
+                      y1={drawing.startPoint.y}
+                      x2={lineEndX}
+                      y2={lineEndY}
+                      stroke={drawing.color}
+                      strokeWidth={drawing.strokeWidth / zoom}
+                      strokeLinecap="round"
+                    />
+                    <polygon
+                      points={`0,0 ${-arrowLength},${-arrowWidth/2} ${-arrowLength},${arrowWidth/2}`}
+                      fill={drawing.color}
+                      stroke={drawing.color}
+                      strokeWidth={(drawing.strokeWidth * 0.3) / zoom}
+                      strokeLinejoin="miter"
+                      transform={`translate(${drawing.endPoint.x},${drawing.endPoint.y}) rotate(${angle * 180 / Math.PI})`}
+                    />
+                  </g>
+                );
+              }
+
+              return null;
+            })}
+
+            {/* Render drawing in progress */}
+            {currentDrawing && drawingStart && drawingCurrent && (
+              <>
+                {selectedDrawingTool === "pen" && drawingPath.length > 0 && (
+                  <path
+                    d={drawingPath.map((point, i) => `${i === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}
+                    stroke={drawingColor}
+                    strokeWidth={strokeWidth / zoom}
+                    fill="none"
+                    opacity={0.7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {selectedDrawingTool === "line" && (
+                  <line
+                    x1={drawingStart.x}
+                    y1={drawingStart.y}
+                    x2={drawingCurrent.x}
+                    y2={drawingCurrent.y}
+                    stroke={drawingColor}
+                    strokeWidth={strokeWidth / zoom}
+                    opacity={0.7}
+                    strokeLinecap="round"
+                  />
+                )}
+                {selectedDrawingTool === "rectangle" && (
+                  <rect
+                    x={Math.min(drawingStart.x, drawingCurrent.x)}
+                    y={Math.min(drawingStart.y, drawingCurrent.y)}
+                    width={Math.abs(drawingCurrent.x - drawingStart.x)}
+                    height={Math.abs(drawingCurrent.y - drawingStart.y)}
+                    stroke={drawingColor}
+                    strokeWidth={strokeWidth / zoom}
+                    fill={enableFill ? fillColor : "none"}
+                    opacity={0.7}
+                  />
+                )}
+                {selectedDrawingTool === "circle" && (
+                  <ellipse
+                    cx={drawingStart.x}
+                    cy={drawingStart.y}
+                    rx={Math.abs(drawingCurrent.x - drawingStart.x)}
+                    ry={Math.abs(drawingCurrent.y - drawingStart.y)}
+                    stroke={drawingColor}
+                    strokeWidth={strokeWidth / zoom}
+                    fill={enableFill ? fillColor : "none"}
+                    opacity={0.7}
+                  />
+                )}
+                {selectedDrawingTool === "arrow" && (
+                  <>
+                    {(() => {
+                      const dx = drawingCurrent.x - drawingStart.x;
+                      const dy = drawingCurrent.y - drawingStart.y;
+                      const length = Math.sqrt(dx * dx + dy * dy);
+                      const angle = Math.atan2(dy, dx);
+                      
+                      // Scale arrow size based on stroke width
+                      const arrowLength = Math.max(2, strokeWidth * 3);
+                      const arrowWidth = arrowLength * 0.7;
+                      
+                      // Shorten the line so it ends at the base of the arrowhead
+                      const shortenBy = arrowLength * 0.3;
+                      const ratio = Math.max(0, (length - shortenBy) / length);
+                      const lineEndX = drawingStart.x + dx * ratio;
+                      const lineEndY = drawingStart.y + dy * ratio;
+                      
+                      return (
+                        <>
+                          <line
+                            x1={drawingStart.x}
+                            y1={drawingStart.y}
+                            x2={lineEndX}
+                            y2={lineEndY}
+                            stroke={drawingColor}
+                            strokeWidth={strokeWidth / zoom}
+                            opacity={0.7}
+                            strokeLinecap="round"
+                          />
+                          <polygon
+                            points={`0,0 ${-arrowLength},${-arrowWidth/2} ${-arrowLength},${arrowWidth/2}`}
+                            fill={drawingColor}
+                            stroke={drawingColor}
+                            strokeWidth={(strokeWidth * 0.3) / zoom}
+                            strokeLinejoin="miter"
+                            opacity={0.7}
+                            transform={`translate(${drawingCurrent.x},${drawingCurrent.y}) rotate(${angle * 180 / Math.PI})`}
+                          />
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
+              </>
+            )}
+          </svg>
+
           {/* Placed Icons */}
           {visibleIcons.map((icon, index) => {
             const locked = isIconLocked(icon);
@@ -986,10 +1162,6 @@ export function MapCanvas({
                 zIndex={iconZIndex}
                 onMove={locked ? () => {} : handleIconMove}
                 onMoveComplete={locked ? () => {} : handleIconMoveComplete}
-                onUpdate={locked ? () => {} : handleIconUpdate}
-                onDelete={locked ? () => {} : handleIconDelete}
-                onCopy={handleIconCopy}
-                onDuplicate={locked ? () => {} : handleIconDuplicate}
                 onClick={handleIconClick}
                 onDragStart={locked ? () => {} : handleIconDragStart}
                 isConnectMode={isConnectMode}
