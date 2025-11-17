@@ -1,3 +1,9 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
@@ -9,16 +15,17 @@ datasource db {
 }
 
 model Diagram {
-  id          String        @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
-  imageUrl    String
-  imageWidth  Float
-  imageHeight Float
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  userId      String
-  eventId     String?
+  imageUrl    String   // URL to the background image (blueprint, aerial shot, etc.)
+  imageWidth  Float    // Original image width for scaling calculations
+  imageHeight Float    // Original image height for scaling calculations
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String   // User who created the diagram
+  eventId     String?  // Optional: Link to an event
+
   items       DiagramItem[]
 
   @@index([userId])
@@ -28,20 +35,28 @@ model Diagram {
 model DiagramItem {
   id          String   @id @default(cuid())
   diagramId   String
-  iconType    String
-  name        String
-  description String?
-  x           Float
-  y           Float
-  width       Float
-  height      Float
-  rotation    Float    @default(0)
-  color       String   @default("#000000")
-  opacity     Float    @default(1.0)
-  zIndex      Int      @default(0)
+  diagram     Diagram  @relation(fields: [diagramId], references: [id], onDelete: Cascade)
+  
+  // Icon and visual properties
+  iconType    String   // Type of icon from the predefined set (e.g., "chair", "table", "stage")
+  name        String   // Custom name for this item
+  description String?  // Custom description/instructions
+  
+  // Position and transformation
+  x           Float    // X position on the canvas (percentage or pixels)
+  y           Float    // Y position on the canvas (percentage or pixels)
+  width       Float    // Width of the icon
+  height      Float    // Height of the icon
+  rotation    Float    @default(0) // Rotation in degrees (0-360)
+  
+  // Styling
+  color       String   @default("#000000") // Hex color code
+  opacity     Float    @default(1.0) // Opacity (0-1)
+  
+  // Metadata
+  zIndex      Int      @default(0) // Layering order
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  diagram     Diagram  @relation(fields: [diagramId], references: [id], onDelete: Cascade)
 
   @@index([diagramId])
 }

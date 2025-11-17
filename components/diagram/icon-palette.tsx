@@ -31,15 +31,15 @@ export function IconPalette({ onIconSelect }: IconPaletteProps) {
         </p>
       </div>
       
-      <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="flex-1 flex flex-col">
-        <div className="border-b px-2">
-          <ScrollArea className="w-full">
-            <TabsList className="w-full justify-start">
+      <Tabs value={selectedCategory} onValueChange={setSelectedCategory} className="flex-1 flex flex-col overflow-hidden">
+        <div className="border-b">
+          <ScrollArea className="w-full overflow-x-auto">
+            <TabsList className="w-max min-w-full justify-start inline-flex">
               {categories.map((category) => (
                 <TabsTrigger 
                   key={category} 
                   value={category}
-                  className="capitalize text-xs"
+                  className="capitalize text-xs shrink-0"
                 >
                   {category}
                 </TabsTrigger>
@@ -48,29 +48,33 @@ export function IconPalette({ onIconSelect }: IconPaletteProps) {
           </ScrollArea>
         </div>
         
-        <ScrollArea className="flex-1">
-          <TabsContent value={selectedCategory} className="p-4 mt-0">
-            <div className="grid grid-cols-2 gap-3">
-              {filteredIcons.map((icon) => (
-                <div
-                  key={icon.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, icon.id)}
-                  onClick={() => onIconSelect?.(icon.id)}
-                  className="flex flex-col items-center justify-center p-3 border rounded-lg cursor-move hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-blue-500 transition-colors"
-                  title={icon.description}
-                >
-                  <div className="mb-2">
-                    {icon.renderIcon({ size: 32, color: 'currentColor' })}
-                  </div>
-                  <span className="text-xs text-center font-medium">
-                    {icon.name}
-                  </span>
+        <div className="flex-1 overflow-hidden">
+          <TabsContent value={selectedCategory} className="h-full">
+            <ScrollArea className="h-full">
+              <div className="p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {filteredIcons.map((icon) => (
+                    <div
+                      key={icon.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, icon.id)}
+                      onClick={() => onIconSelect?.(icon.id)}
+                      className="flex flex-col items-center justify-center p-3 border rounded-lg cursor-move hover:bg-gray-50 dark:hover:bg-gray-700 hover:border-blue-500 transition-colors"
+                      title={icon.description}
+                    >
+                      <div className="mb-2">
+                        {icon.renderIcon({ size: 32, color: 'currentColor' })}
+                      </div>
+                      <span className="text-xs text-center font-medium">
+                        {icon.name}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            </ScrollArea>
           </TabsContent>
-        </ScrollArea>
+        </div>
       </Tabs>
     </div>
   );
