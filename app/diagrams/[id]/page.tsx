@@ -528,6 +528,7 @@ export default function DiagramEditorPage() {
               imageHeight={imageHeight}
               items={items}
               layers={layers}
+              selectedLayerId={selectedLayerId}
               drawingPaths={drawingPaths}
               drawingShapes={drawingShapes}
               selectedItemId={selectedItemId}
@@ -540,7 +541,6 @@ export default function DiagramEditorPage() {
               onDrawingSelect={(id, type) => {
                 setSelectedDrawingId(id);
                 setSelectedDrawingType(type);
-                // Don't clear selections to allow mixed selection
                 setSelectedDrawingIds([]);
               }}
               onDrawingMultiSelect={(drawings) => {
@@ -610,6 +610,7 @@ export default function DiagramEditorPage() {
                   item={selectedItem}
                   items={items}
                   selectedItemIds={selectedItemIds}
+                  selectedDrawingIds={selectedDrawingIds}
                   layers={layers}
                   selectedDrawingId={selectedDrawingId}
                   selectedDrawingType={selectedDrawingType}
@@ -638,6 +639,22 @@ export default function DiagramEditorPage() {
                     } else if (selectedDrawingType === 'path' && selectedDrawingId) {
                       setDrawingPaths(prev => prev.map(p => 
                         p.id === selectedDrawingId ? { ...p, ...updates } : p
+                      ));
+                    }
+                  }}
+                  onDrawingMultiUpdate={(shapeUpdates, pathUpdates) => {
+                    const shapeIds = selectedDrawingIds.filter(d => d.type === 'shape').map(d => d.id);
+                    const pathIds = selectedDrawingIds.filter(d => d.type === 'path').map(d => d.id);
+                    
+                    if (shapeIds.length > 0 && Object.keys(shapeUpdates).length > 0) {
+                      setDrawingShapes(prev => prev.map(s => 
+                        shapeIds.includes(s.id) ? { ...s, ...shapeUpdates } : s
+                      ));
+                    }
+                    
+                    if (pathIds.length > 0 && Object.keys(pathUpdates).length > 0) {
+                      setDrawingPaths(prev => prev.map(p => 
+                        pathIds.includes(p.id) ? { ...p, ...pathUpdates } : p
                       ));
                     }
                   }}
@@ -685,10 +702,25 @@ export default function DiagramEditorPage() {
                 <LayersPanel
                   layers={layers}
                   items={items}
+                  drawingShapes={drawingShapes}
+                  drawingPaths={drawingPaths}
                   selectedLayerId={selectedLayerId}
                   onLayersUpdate={setLayers}
                   onItemsUpdate={setItems}
                   onLayerSelect={setSelectedLayerId}
+                  onSelectLayerItems={(itemIds, drawingIds) => {
+                    setSelectedItemIds(itemIds);
+                    setSelectedDrawingIds(drawingIds);
+                    // Set last selected for properties panel
+                    if (itemIds.length > 0) {
+                      setSelectedItemId(itemIds[itemIds.length - 1]);
+                    }
+                    if (drawingIds.length > 0) {
+                      const last = drawingIds[drawingIds.length - 1];
+                      setSelectedDrawingId(last.id);
+                      setSelectedDrawingType(last.type);
+                    }
+                  }}
                   onEditingChange={setIsEditingLayerName}
                 />
               </div>

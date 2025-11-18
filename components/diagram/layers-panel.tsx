@@ -1,22 +1,25 @@
 'use client';
 
 import React, { useState } from 'react';
-import type { DiagramItem, DiagramLayer } from '@/lib/types/diagram';
+import type { DiagramItem, DiagramLayer, DrawingShape, DrawingPath } from '@/lib/types/diagram';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Eye, EyeOff, Lock, Unlock, Trash2, Plus, GripVertical, Pencil } from 'lucide-react';
+import { Eye, EyeOff, Lock, Unlock, Trash2, Plus, GripVertical, Pencil, CheckSquare } from 'lucide-react';
 
 interface LayersPanelProps {
   layers: DiagramLayer[];
   items: DiagramItem[];
+  drawingShapes?: DrawingShape[];
+  drawingPaths?: DrawingPath[];
   selectedLayerId: string | null;
   onLayersUpdate: (layers: DiagramLayer[]) => void;
   onItemsUpdate: (items: DiagramItem[]) => void;
   onLayerSelect: (layerId: string) => void;
+  onSelectLayerItems?: (itemIds: string[], drawingIds: Array<{id: string, type: 'path' | 'shape'}>) => void;
   onEditingChange?: (isEditing: boolean) => void;
 }
 
-export function LayersPanel({ layers, items, selectedLayerId, onLayersUpdate, onItemsUpdate, onLayerSelect, onEditingChange }: LayersPanelProps) {
+export function LayersPanel({ layers, items, drawingShapes = [], drawingPaths = [], selectedLayerId, onLayersUpdate, onItemsUpdate, onLayerSelect, onSelectLayerItems, onEditingChange }: LayersPanelProps) {
   const [editingLayerId, setEditingLayerId] = useState<string | null>(null);
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
@@ -102,7 +105,21 @@ export function LayersPanel({ layers, items, selectedLayerId, onLayersUpdate, on
   };
 
   const getLayerItemCount = (layerId: string) => {
-    return items.filter(item => item.layerId === layerId).length;
+    const iconCount = items.filter(item => item.layerId === layerId).length;
+    const shapeCount = drawingShapes.filter(shape => shape.layerId === layerId).length;
+    const pathCount = drawingPaths.filter(path => path.layerId === layerId).length;
+    return iconCount + shapeCount + pathCount;
+  };
+
+  const selectAllInLayer = (layerId: string) => {
+    const layerItems = items.filter(item => item.layerId === layerId).map(item => item.id);
+    const layerShapes = drawingShapes.filter(shape => shape.layerId === layerId).map(shape => ({ id: shape.id, type: 'shape' as const }));
+    const layerPaths = drawingPaths.filter(path => path.layerId === layerId).map(path => ({ id: path.id, type: 'path' as const }));
+    const layerDrawings = [...layerShapes, ...layerPaths];
+    
+    if (onSelectLayerItems) {
+      onSelectLayerItems(layerItems, layerDrawings);
+    }
   };
 
   // Sort layers by order
@@ -194,6 +211,15 @@ export function LayersPanel({ layers, items, selectedLayerId, onLayersUpdate, on
 
               {/* Controls */}
               <div className="flex items-center gap-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => selectAllInLayer(layer.id)}
+                  className="h-6 w-6"
+                  title="Select all items in layer"
+                >
+                  <CheckSquare size={12} />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"

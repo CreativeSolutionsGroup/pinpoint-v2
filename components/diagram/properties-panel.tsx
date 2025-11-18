@@ -13,6 +13,7 @@ interface PropertiesPanelProps {
   item: DiagramItem | null;
   items: DiagramItem[];
   selectedItemIds: string[];
+  selectedDrawingIds?: Array<{id: string, type: 'path' | 'shape'}>;
   layers: DiagramLayer[];
   selectedDrawingId?: string | null;
   selectedDrawingType?: 'path' | 'shape' | null;
@@ -21,24 +22,27 @@ interface PropertiesPanelProps {
   onUpdate: (updates: Partial<DiagramItem>) => void;
   onMultiUpdate: (updates: Partial<DiagramItem>) => void;
   onDrawingUpdate?: (updates: Partial<DrawingShape> | Partial<DrawingPath>) => void;
+  onDrawingMultiUpdate?: (shapeUpdates: Partial<DrawingShape>, pathUpdates: Partial<DrawingPath>) => void;
   onDelete: () => void;
   onEditingChange?: (isEditing: boolean) => void;
   onClose?: () => void;
 }
 
-export function PropertiesPanel({ item, items, selectedItemIds, layers, selectedDrawingId, selectedDrawingType, drawingShapes, drawingPaths, onUpdate, onMultiUpdate, onDrawingUpdate, onDelete, onEditingChange }: PropertiesPanelProps) {
-  const isMultiSelect = selectedItemIds.length > 1;
-  const selectedItems = isMultiSelect ? items.filter(i => selectedItemIds.includes(i.id)) : [];
+export function PropertiesPanel({ item, items, selectedItemIds, selectedDrawingIds = [], layers, selectedDrawingId, selectedDrawingType, drawingShapes, drawingPaths, onUpdate, onMultiUpdate, onDrawingUpdate, onDrawingMultiUpdate, onDelete, onEditingChange }: PropertiesPanelProps) {
+  const isMultiSelect = selectedItemIds.length > 1 || selectedDrawingIds.length > 1 || (selectedItemIds.length > 0 && selectedDrawingIds.length > 0);
+  const isMixedSelect = selectedItemIds.length > 0 && selectedDrawingIds.length > 0;
+  const selectedItems = selectedItemIds.length > 0 ? items.filter(i => selectedItemIds.includes(i.id)) : [];
+  const totalSelected = selectedItemIds.length + selectedDrawingIds.length;
   
-  // Check for selected drawing
-  const selectedShape = selectedDrawingType === 'shape' && selectedDrawingId && drawingShapes
+  // Check for selected drawing (only for single selection)
+  const selectedShape = !isMultiSelect && selectedDrawingType === 'shape' && selectedDrawingId && drawingShapes
     ? drawingShapes.find(s => s.id === selectedDrawingId)
     : null;
-  const selectedPath = selectedDrawingType === 'path' && selectedDrawingId && drawingPaths
+  const selectedPath = !isMultiSelect && selectedDrawingType === 'path' && selectedDrawingId && drawingPaths
     ? drawingPaths.find(p => p.id === selectedDrawingId)
     : null;
 
-  if (!item && selectedItemIds.length === 0 && !selectedShape && !selectedPath) {
+  if (!item && selectedItemIds.length === 0 && selectedDrawingIds.length === 0 && !selectedShape && !selectedPath) {
     return (
       <div className="h-full flex items-center justify-center bg-white dark:bg-gray-800 border-l">
         <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -293,20 +297,28 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
         <div className="flex-1 overflow-auto p-4 space-y-6">
           <div className="p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-sm text-blue-800 dark:text-blue-200">
-              <strong>{selectedItemIds.length}</strong> items selected
+              <strong>{totalSelected}</strong> {totalSelected === 1 ? 'item' : 'items'} selected
             </p>
+            {isMixedSelect && (
+              <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                {selectedItemIds.length} {selectedItemIds.length === 1 ? 'icon' : 'icons'}, {selectedDrawingIds.length} {selectedDrawingIds.length === 1 ? 'drawing' : 'drawings'}
+              </p>
+            )}
           </div>
 
           {/* Common Properties */}
           
           {/* Rotation */}
           <div className="space-y-2">
-            <Label>Rotation</Label>
+            <Label>Rotation {isMixedSelect && '(Icons & Shapes)'}</Label>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onMultiUpdate({ rotation: 0 })}
+                onClick={() => {
+                  if (selectedItemIds.length > 0) onMultiUpdate({ rotation: 0 });
+                  if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ rotation: 0 }, {});
+                }}
                 className="flex-1"
               >
                 0°
@@ -314,7 +326,10 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onMultiUpdate({ rotation: 90 })}
+                onClick={() => {
+                  if (selectedItemIds.length > 0) onMultiUpdate({ rotation: 90 });
+                  if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ rotation: 90 }, {});
+                }}
                 className="flex-1"
               >
                 90°
@@ -322,7 +337,10 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onMultiUpdate({ rotation: 180 })}
+                onClick={() => {
+                  if (selectedItemIds.length > 0) onMultiUpdate({ rotation: 180 });
+                  if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ rotation: 180 }, {});
+                }}
                 className="flex-1"
               >
                 180°
@@ -330,7 +348,10 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onMultiUpdate({ rotation: 270 })}
+                onClick={() => {
+                  if (selectedItemIds.length > 0) onMultiUpdate({ rotation: 270 });
+                  if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ rotation: 270 }, {});
+                }}
                 className="flex-1"
               >
                 270°
@@ -340,17 +361,23 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
 
           {/* Color */}
           <div className="space-y-2">
-            <Label htmlFor="multi-color">Color</Label>
+            <Label htmlFor="multi-color">Color {isMixedSelect && '(All)'}</Label>
             <div className="flex gap-2">
               <Input
                 id="multi-color"
                 type="color"
-                onChange={(e) => onMultiUpdate({ color: e.target.value })}
+                onChange={(e) => {
+                  if (selectedItemIds.length > 0) onMultiUpdate({ color: e.target.value });
+                  if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ color: e.target.value }, { color: e.target.value });
+                }}
                 className="w-20 h-10 p-1"
               />
               <Input
                 type="text"
-                onChange={(e) => onMultiUpdate({ color: e.target.value })}
+                onChange={(e) => {
+                  if (selectedItemIds.length > 0) onMultiUpdate({ color: e.target.value });
+                  if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ color: e.target.value }, { color: e.target.value });
+                }}
                 onFocus={() => onEditingChange?.(true)}
                 onBlur={() => onEditingChange?.(false)}
                 className="flex-1"
@@ -361,46 +388,75 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
 
           {/* Opacity */}
           <div className="space-y-2">
-            <Label htmlFor="multi-opacity">Opacity</Label>
+            <Label htmlFor="multi-opacity">Opacity {isMixedSelect && '(All)'}</Label>
             <input
               id="multi-opacity"
               type="range"
               min="0.1"
               max="1"
               step="0.01"
-              onChange={(e) => onMultiUpdate({ opacity: Math.max(0.1, parseFloat(e.target.value)) })}
+              onChange={(e) => {
+                const opacity = Math.max(0.1, parseFloat(e.target.value));
+                if (selectedItemIds.length > 0) onMultiUpdate({ opacity });
+                if (selectedDrawingIds.length > 0) onDrawingMultiUpdate?.({ opacity }, { opacity });
+              }}
               className="w-full"
             />
           </div>
 
-          {/* Z-Index */}
-          <div className="space-y-2">
-            <Label>Layer Order</Label>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const minZ = Math.min(...selectedItems.map(i => i.zIndex));
-                  onMultiUpdate({ zIndex: Math.max(0, minZ - 1) });
+          {/* Stroke Width - only for drawings */}
+          {selectedDrawingIds.length > 0 && (
+            <div className="space-y-2">
+              <Label htmlFor="multi-stroke-width">Stroke Width (Drawings)</Label>
+              <Input
+                id="multi-stroke-width"
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                placeholder="1-20"
+                onChange={(e) => {
+                  const width = parseFloat(e.target.value) || 1;
+                  // Shapes use strokeWidth, paths use width
+                  onDrawingMultiUpdate?.({ strokeWidth: width }, { width });
                 }}
-                className="flex-1"
-              >
-                Send Backward
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const maxZ = Math.max(...selectedItems.map(i => i.zIndex));
-                  onMultiUpdate({ zIndex: maxZ + 1 });
-                }}
-                className="flex-1"
-              >
-                Bring Forward
-              </Button>
+                onFocus={() => onEditingChange?.(true)}
+                onBlur={() => onEditingChange?.(false)}
+                className="h-8"
+              />
             </div>
-          </div>
+          )}
+
+          {/* Z-Index */}
+          {selectedItemIds.length > 0 && (
+            <div className="space-y-2">
+              <Label>Layer Order (Icons)</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const minZ = Math.min(...selectedItems.map(i => i.zIndex));
+                    onMultiUpdate({ zIndex: Math.max(0, minZ - 1) });
+                  }}
+                  className="flex-1"
+                >
+                  Send Backward
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const maxZ = Math.max(...selectedItems.map(i => i.zIndex));
+                    onMultiUpdate({ zIndex: maxZ + 1 });
+                  }}
+                  className="flex-1"
+                >
+                  Bring Forward
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer - Delete Button */}
@@ -411,7 +467,7 @@ export function PropertiesPanel({ item, items, selectedItemIds, layers, selected
             onClick={onDelete}
           >
             <Trash2 size={16} className="mr-2" />
-            Delete {selectedItemIds.length} Items
+            Delete {totalSelected} {totalSelected === 1 ? 'Item' : 'Items'}
           </Button>
         </div>
       </div>

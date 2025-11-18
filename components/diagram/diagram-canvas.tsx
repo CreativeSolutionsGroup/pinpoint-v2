@@ -10,6 +10,7 @@ interface DiagramCanvasProps {
   imageHeight: number;
   items: DiagramItemType[];
   layers: DiagramLayer[];
+  selectedLayerId?: string | null;
   drawingPaths: DrawingPath[];
   drawingShapes: DrawingShape[];
   selectedItemId: string | null;
@@ -43,6 +44,7 @@ export function DiagramCanvas({
   imageHeight,
   items,
   layers,
+  selectedLayerId,
   drawingPaths,
   drawingShapes,
   selectedItemId,
@@ -419,12 +421,40 @@ export function DiagramCanvas({
           
           // If clicked on a drawing
           if (clickedOnDrawing && clickedId && clickedType) {
-            // Check if clicked drawing is part of multi-selection
-            const isPartOfMultiSelect = selectedDrawingIds.some(d => d.id === clickedId && d.type === clickedType);
-            
-            // If clicking on a drawing that's not in multi-selection, select only it
-            if (!isPartOfMultiSelect) {
-              onDrawingSelect(clickedId, clickedType);
+            if (e.ctrlKey || e.metaKey) {
+              // Multi-select with Ctrl/Cmd
+              const isAlreadySelected = selectedDrawingIds.some(d => d.id === clickedId && d.type === clickedType);
+              if (isAlreadySelected) {
+                // Remove from selection
+                const newSelection = selectedDrawingIds.filter(d => !(d.id === clickedId && d.type === clickedType));
+                onDrawingMultiSelect(newSelection);
+                if (newSelection.length > 0) {
+                  const last = newSelection[newSelection.length - 1];
+                  onDrawingSelect(last.id, last.type);
+                } else {
+                  onDrawingSelect(null, null);
+                }
+              } else {
+                // Add to selection
+                // If there's a single selection but it's not in the multi-select array, add it first
+                const currentSelection = [...selectedDrawingIds];
+                if (selectedDrawingId && selectedDrawingType && !selectedDrawingIds.some(d => d.id === selectedDrawingId && d.type === selectedDrawingType)) {
+                  currentSelection.push({ id: selectedDrawingId, type: selectedDrawingType });
+                }
+                onDrawingMultiSelect([...currentSelection, { id: clickedId, type: clickedType }]);
+                onDrawingSelect(clickedId, clickedType);
+              }
+            } else {
+              // Check if clicked drawing is part of multi-selection
+              const isPartOfMultiSelect = selectedDrawingIds.some(d => d.id === clickedId && d.type === clickedType);
+              
+              // If clicking on a drawing that's not in multi-selection, select only it and clear icons
+              if (!isPartOfMultiSelect) {
+                // Only use onDrawingMultiSelect - it will set both single and multi state
+                onItemSelect(null);
+                onMultiSelect([]);
+                onDrawingMultiSelect([{ id: clickedId, type: clickedType }]);
+              }
             }
             // Start dragging (will move all multi-selected drawings if applicable)
             setIsDraggingDrawing(true);
@@ -449,7 +479,7 @@ export function DiagramCanvas({
         }
       }
     }
-  }, [tool, transform, onItemSelect, onMultiSelect, onDrawingSelect, drawingPaths, drawingShapes, onDrawingPathsUpdate, onDrawingShapesUpdate, doesEraserHitPath, doesEraserHitShape, isPointInPath, isPointInShape, selectedDrawingIds]);
+  }, [tool, transform, onItemSelect, onMultiSelect, onDrawingSelect, onDrawingMultiSelect, drawingPaths, drawingShapes, onDrawingPathsUpdate, onDrawingShapesUpdate, doesEraserHitPath, doesEraserHitShape, isPointInPath, isPointInShape, selectedDrawingIds, selectedDrawingId, selectedDrawingType]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isPanning && dragStartTransform) {
@@ -626,6 +656,7 @@ export function DiagramCanvas({
         color: drawingColor,
         width: drawingWidth,
         opacity: drawingOpacity,
+        layerId: selectedLayerId || undefined,
       };
       onDrawingPathAdd(newPath);
       setCurrentPath([]);
@@ -650,6 +681,7 @@ export function DiagramCanvas({
           strokeWidth: drawingWidth,
           opacity: drawingOpacity,
           filled: drawingFilled,
+          layerId: selectedLayerId || undefined,
         };
         onDrawingShapeAdd(newShape);
       }
@@ -708,7 +740,7 @@ export function DiagramCanvas({
       
       setIsSelecting(false);
     }
-  }, [isDrawing, isSelecting, selectionStart, selectionEnd, items, tool, currentPath, drawingColor, drawingWidth, drawingOpacity, drawingFilled, shapeStart, shapeEnd, onItemSelect, onMultiSelect, onDrawingPathAdd, onDrawingShapeAdd, drawingPaths, drawingShapes, isPathInSelectionBox, isShapeInSelectionBox, onDrawingMultiSelect]);
+  }, [isDrawing, isSelecting, selectionStart, selectionEnd, items, tool, currentPath, drawingColor, drawingWidth, drawingOpacity, drawingFilled, shapeStart, shapeEnd, onItemSelect, onMultiSelect, onDrawingPathAdd, onDrawingShapeAdd, drawingPaths, drawingShapes, isPathInSelectionBox, isShapeInSelectionBox, onDrawingMultiSelect, selectedLayerId]);
 
   // Handle drop from icon palette
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -848,9 +880,11 @@ export function DiagramCanvas({
                       // Just set this as the primary selected item, keep multi-selection
                       onItemSelect(item.id);
                     } else {
-                      // Single select - clear multi-selection
+                      // Single select - clear multi-selection and clear drawing selections
                       onItemSelect(item.id);
                       onMultiSelect([item.id]);
+                      onDrawingSelect(null, null);
+                      onDrawingMultiSelect([]);
                     }
                   }
                 }}
@@ -985,7 +1019,13 @@ export function DiagramCanvas({
               height: imageHeight,
             }}
           >
-            {drawingPaths.map(path => {
+            {drawingPaths
+              .filter(path => {
+                // Filter by layer visibility
+                const layer = layers.find(l => l.id === path.layerId);
+                return !layer || layer.visible;
+              })
+              .map(path => {
               if (path.points.length < 2) return null;
               
               const pathData = path.points
@@ -1027,7 +1067,13 @@ export function DiagramCanvas({
             })}
             
             {/* Drawing Shapes */}
-            {drawingShapes.map(shape => {
+            {drawingShapes
+              .filter(shape => {
+                // Filter by layer visibility
+                const layer = layers.find(l => l.id === shape.layerId);
+                return !layer || layer.visible;
+              })
+              .map(shape => {
               const isSelected = selectedDrawingId === shape.id && selectedDrawingType === 'shape';
               const isMultiSelected = selectedDrawingIds.some(d => d.id === shape.id && d.type === 'shape');
               const cx = shape.x + shape.width / 2;
