@@ -1,10 +1,12 @@
 "use client";
 
-import { Layer, MapIcon, Drawing, DrawingTool } from "./types";
+import { Layer, MapIcon, Drawing, DrawingTool, TextElement } from "./types";
 import { LayersPanel } from "./layers-panel";
 import { IconOptionsPanel } from "./icon-options-panel";
+import { TextPanel } from "./text-panel";
+import { TextOptionsPanel } from "./text-options-panel";
 import { DrawingPanel } from "./drawing-panel";
-import { ChevronDown, ChevronRight, Layers, Settings, PenTool } from "lucide-react";
+import { ChevronDown, ChevronRight, Layers, Settings, PenTool, Type } from "lucide-react";
 import { useState } from "react";
 
 interface SidebarPanelProps {
@@ -18,6 +20,12 @@ interface SidebarPanelProps {
   onGroupUpdate: (iconId: string, updates: Partial<MapIcon>) => void;
   onIconDelete: () => void;
   onGroupDelete: () => void;
+  // Text props
+  texts: TextElement[];
+  selectedText: TextElement | null;
+  onTextAdd: (text: TextElement) => void;
+  onTextUpdate: (updates: Partial<TextElement>) => void;
+  onTextDelete: () => void;
   // Drawing props
   drawings: Drawing[];
   selectedDrawingTool: DrawingTool;
@@ -48,6 +56,11 @@ export function SidebarPanel({
   onGroupUpdate,
   onIconDelete,
   onGroupDelete,
+  texts,
+  selectedText,
+  onTextAdd,
+  onTextUpdate,
+  onTextDelete,
   drawings,
   selectedDrawingTool,
   onDrawingToolChange,
@@ -66,7 +79,7 @@ export function SidebarPanel({
   onClearAllDrawings,
 }: SidebarPanelProps) {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["layers", "options", "drawing"])
+    new Set(["layers", "options", "text", "drawing"])
   );
 
   const toggleSection = (section: string) => {
@@ -143,6 +156,46 @@ export function SidebarPanel({
             />
           </div>
         )}
+        </div>
+
+        {/* Text Section */}
+        <div className="border-b">
+          <button
+            onClick={() => toggleSection("text")}
+            className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-accent transition-colors text-sm font-medium"
+          >
+            <div className="flex items-center gap-2">
+              <Type className="h-4 w-4" />
+              <span>Text</span>
+              {texts.length > 0 && (
+                <span className="text-xs text-muted-foreground">({texts.length})</span>
+              )}
+              {selectedText && (
+                <span className="text-xs text-muted-foreground">({selectedText.text.substring(0, 20)}{selectedText.text.length > 20 ? "..." : ""})</span>
+              )}
+            </div>
+            {expandedSections.has("text") ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )}
+          </button>
+          {expandedSections.has("text") && (
+            <div className="overflow-y-auto">
+              {selectedText ? (
+                <TextOptionsPanel 
+                  selectedText={selectedText}
+                  onUpdate={onTextUpdate}
+                  onDelete={onTextDelete}
+                />
+              ) : (
+                <TextPanel 
+                  onTextAdd={onTextAdd}
+                  currentLayer={currentLayer}
+                />
+              )}
+            </div>
+          )}
         </div>
 
         {/* Drawing Section */}

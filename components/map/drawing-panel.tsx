@@ -11,12 +11,13 @@ import {
   Square, 
   Circle, 
   MoveUpRight,
-  Type,
   Palette,
   Trash2,
   Eye,
   EyeOff,
-  PenTool
+  PenTool,
+  Eraser,
+  Scissors
 } from "lucide-react";
 import { useState } from "react";
 
@@ -65,7 +66,8 @@ export function DrawingPanel({
     { tool: "rectangle", icon: Square, label: "Rectangle" },
     { tool: "circle", icon: Circle, label: "Circle" },
     { tool: "arrow", icon: MoveUpRight, label: "Arrow" },
-    { tool: "text", icon: Type, label: "Text" },
+    { tool: "eraser", icon: Eraser, label: "Eraser" },
+    { tool: "partial-eraser", icon: Scissors, label: "Partial" },
   ];
 
   return (

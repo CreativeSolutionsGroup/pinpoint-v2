@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { MapIcon as MapIconComponent } from "./map-icon";
+import { MapText as MapTextComponent } from "./map-text";
 import { MapConnector } from "./map-connector";
-import { MapIcon as MapIconType, IconType, Connector, Layer, Drawing, DrawingTool, Position } from "./types";
+import { MapIcon as MapIconType, IconType, Connector, Layer, Drawing, DrawingTool, Position, TextElement } from "./types";
 import { 
   ZoomIn, ZoomOut, Maximize2, Link, Undo, Redo, Grid3x3, Printer
 } from "lucide-react";
@@ -15,14 +16,18 @@ import { PrintDialog } from "./print-dialog";
 interface MapCanvasProps {
   mapImageUrl: string;
   icons: MapIconType[];
+  texts?: TextElement[];
   connectors?: Connector[];
   layers?: Layer[];
   onIconsChange: (icons: MapIconType[]) => void;
+  onTextsChange?: (texts: TextElement[]) => void;
   onConnectorsChange?: (connectors: Connector[]) => void;
   onIconMoveComplete?: (icons: MapIconType[]) => void;
+  onTextMoveComplete?: (texts: TextElement[]) => void;
   onConnectorMoveComplete?: (connectors: Connector[]) => void;
   onAddIcon?: (iconType: IconType, position: { x: number; y: number }) => void;
   onSelectionChange?: (selectedIds: Set<string>) => void;
+  onTextSelectionChange?: (selectedTextId: string | null) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -36,6 +41,7 @@ interface MapCanvasProps {
   fillColor?: string;
   enableFill?: boolean;
   onDrawingAdd?: (drawing: Drawing) => void;
+  onDrawingsChange?: (drawings: Drawing[]) => void;
 }
 
 export function MapCanvas({
@@ -61,6 +67,11 @@ export function MapCanvas({
   fillColor = "#ffffff",
   enableFill = false,
   onDrawingAdd,
+  onDrawingsChange,
+  texts = [],
+  onTextsChange,
+  onTextMoveComplete,
+  onTextSelectionChange,
 }: MapCanvasProps) {
   // Filter icons based on layer visibility and sort by layer order
   const visibleLayers = new Set(layers.filter(l => l.visible).map(l => l.id));
@@ -68,10 +79,55 @@ export function MapCanvas({
   // Create a map of layer ID to its index for sorting
   const layerOrderMap = new Map(layers.map((layer, index) => [layer.id, index]));
   
+  // Helper function to calculate distance from point to line segment
+  const pointToLineDistance = (point: Position, lineStart: Position, lineEnd: Position): number => {
+    const A = point.x - lineStart.x;
+    const B = point.y - lineStart.y;
+    const C = lineEnd.x - lineStart.x;
+    const D = lineEnd.y - lineStart.y;
+
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+
+    if (lenSq !== 0) param = dot / lenSq;
+
+    let xx, yy;
+
+    if (param < 0) {
+      xx = lineStart.x;
+      yy = lineStart.y;
+    } else if (param > 1) {
+      xx = lineEnd.x;
+      yy = lineEnd.y;
+    } else {
+      xx = lineStart.x + param * C;
+      yy = lineStart.y + param * D;
+    }
+
+    const dx = point.x - xx;
+    const dy = point.y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
   const visibleIcons = icons
     .filter(icon => {
       const iconLayer = icon.layer || "default";
       return visibleLayers.has(iconLayer) || visibleLayers.size === 0;
+    })
+    .sort((a, b) => {
+      // Sort by layer order - lower index = rendered first (bottom layer)
+      const layerA = a.layer || "default";
+      const layerB = b.layer || "default";
+      const orderA = layerOrderMap.get(layerA) ?? -1;
+      const orderB = layerOrderMap.get(layerB) ?? -1;
+      return orderA - orderB;
+    });
+
+  const visibleTexts = texts
+    .filter(text => {
+      const textLayer = text.layer || "default";
+      return visibleLayers.has(textLayer) || visibleLayers.size === 0;
     })
     .sort((a, b) => {
       // Sort by layer order - lower index = rendered first (bottom layer)
@@ -97,6 +153,8 @@ export function MapCanvas({
   const [copiedIcon, setCopiedIcon] = useState<MapIconType | null>(null);
   const [copiedIcons, setCopiedIcons] = useState<MapIconType[]>([]);
   const [selectedIconIds, setSelectedIconIds] = useState<Set<string>>(new Set());
+  const [selectedTextIds, setSelectedTextIds] = useState<Set<string>>(new Set());
+  const [isDraggingText, setIsDraggingText] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState({ x: 0, y: 0 });
   const [selectionEnd, setSelectionEnd] = useState({ x: 0, y: 0 });
@@ -115,6 +173,7 @@ export function MapCanvas({
   const [drawingStart, setDrawingStart] = useState<Position | null>(null);
   const [drawingCurrent, setDrawingCurrent] = useState<Position | null>(null);
   const [drawingPath, setDrawingPath] = useState<Position[]>([]);
+  const [eraserPath, setEraserPath] = useState<Position[]>([]);
 
   // Notify parent of selection changes
   useEffect(() => {
@@ -135,6 +194,11 @@ export function MapCanvas({
   };
 
   const handlePanStart = (e: React.MouseEvent) => {
+    // Prevent panning if text is being dragged
+    if (isDraggingText) {
+      return;
+    }
+    
     // If in drawing mode, start drawing instead of panning
     if (isDrawingMode && e.button === 0) {
       e.preventDefault();
@@ -152,6 +216,8 @@ export function MapCanvas({
       
       if (selectedDrawingTool === "pen") {
         setDrawingPath([{ x, y }]);
+      } else if (selectedDrawingTool === "eraser" || selectedDrawingTool === "partial-eraser") {
+        setEraserPath([{ x, y }]);
       }
       
       setCurrentDrawing({
@@ -165,14 +231,15 @@ export function MapCanvas({
       return;
     }
     
-    // Allow panning with left click (unless clicking on an icon), middle mouse, or Shift + left click
+    // Allow panning with left click (unless clicking on an icon or text), middle mouse, or Shift + left click
     if (e.button === 0 || e.button === 1) {
-      // Only start panning if clicking on the background (not an icon)
+      // Only start panning if clicking on the background (not an icon or text)
       const target = e.target as HTMLElement;
       const clickedOnIcon = target.closest('.map-icon-container');
+      const clickedOnText = target.closest('.map-text-container');
       
       // Start drag selection with Ctrl/Cmd key (not shift - that's for pan)
-      if (!clickedOnIcon && e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+      if (!clickedOnIcon && !clickedOnText && e.button === 0 && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
         e.preventDefault();
         if (!containerRef.current) return;
         
@@ -187,12 +254,14 @@ export function MapCanvas({
       }
       
       // Clear selection when clicking on empty space (without Ctrl)
-      if (!clickedOnIcon && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (!clickedOnIcon && !clickedOnText && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         setSelectedIconIds(new Set());
+        setSelectedTextIds(new Set());
+        onTextSelectionChange?.(null);
       }
       
-      // Only start panning if NOT selecting
-      if ((!clickedOnIcon || e.button === 1 || e.shiftKey) && !(e.ctrlKey || e.metaKey)) {
+      // Only start panning if NOT selecting and NOT clicking on text
+      if (((!clickedOnIcon && !clickedOnText) || e.button === 1 || e.shiftKey) && !(e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         setIsPanning(true);
         setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -211,6 +280,72 @@ export function MapCanvas({
       
       if (selectedDrawingTool === "pen") {
         setDrawingPath(prev => [...prev, { x, y }]);
+      } else if (selectedDrawingTool === "eraser" || selectedDrawingTool === "partial-eraser") {
+        setEraserPath(prev => [...prev, { x, y }]);
+        
+        const eraserRadius = strokeWidth * 2;
+        
+        if (selectedDrawingTool === "eraser") {
+          // Full eraser - remove entire drawings
+          const drawingsToRemove: string[] = [];
+          
+          drawings.forEach(drawing => {
+            let shouldErase = false;
+            
+            if (drawing.path && drawing.path.points) {
+              shouldErase = drawing.path.points.some(point => {
+                const dist = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+                return dist < eraserRadius;
+              });
+            } else if (drawing.startPoint && drawing.endPoint) {
+              const distToLine = pointToLineDistance({ x, y }, drawing.startPoint, drawing.endPoint);
+              shouldErase = distToLine < eraserRadius;
+            } else if (drawing.x !== undefined && drawing.y !== undefined) {
+              if (drawing.tool === "rectangle" && drawing.width && drawing.height) {
+                const inX = x >= drawing.x && x <= drawing.x + drawing.width;
+                const inY = y >= drawing.y && y <= drawing.y + drawing.height;
+                shouldErase = inX && inY;
+              } else if (drawing.tool === "circle" && drawing.radiusX && drawing.radiusY) {
+                const dx = (x - drawing.x) / drawing.radiusX;
+                const dy = (y - drawing.y) / drawing.radiusY;
+                shouldErase = (dx * dx + dy * dy) <= 1;
+              }
+            }
+            
+            if (shouldErase && !drawingsToRemove.includes(drawing.id)) {
+              drawingsToRemove.push(drawing.id);
+            }
+          });
+          
+          if (drawingsToRemove.length > 0 && onDrawingsChange) {
+            const updatedDrawings = drawings.filter(d => !drawingsToRemove.includes(d.id));
+            onDrawingsChange(updatedDrawings);
+          }
+        } else {
+          // Partial eraser - split pen strokes only
+          const updatedDrawings = drawings.map(drawing => {
+            if (drawing.tool === "pen" && drawing.path && drawing.path.points) {
+              // Remove points within eraser radius
+              const filteredPoints = drawing.path.points.filter(point => {
+                const dist = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+                return dist >= eraserRadius;
+              });
+              
+              // If we removed some points but not all, update the drawing
+              if (filteredPoints.length > 0 && filteredPoints.length < drawing.path.points.length) {
+                return { ...drawing, path: { points: filteredPoints } };
+              } else if (filteredPoints.length === 0) {
+                // Mark for deletion by returning null
+                return null;
+              }
+            }
+            return drawing;
+          }).filter((d): d is Drawing => d !== null);
+          
+          if (updatedDrawings.length !== drawings.length && onDrawingsChange) {
+            onDrawingsChange(updatedDrawings);
+          }
+        }
       }
       return;
     }
@@ -226,9 +361,20 @@ export function MapCanvas({
       const selY = e.clientY - rect.top;
       setSelectionEnd({ x: selX, y: selY });
     }
-  }, [isPanning, panStart, isSelecting, isDrawingMode, currentDrawing, drawingStart, selectedDrawingTool, containerRef, pan, zoom]);
+  }, [isPanning, panStart, isSelecting, isDrawingMode, currentDrawing, drawingStart, selectedDrawingTool, containerRef, pan, zoom, drawings, onDrawingsChange, strokeWidth]);
 
   const handlePanEnd = useCallback(() => {
+    // Handle eraser tools - clean up after erasing
+    if (isDrawingMode && (selectedDrawingTool === "eraser" || selectedDrawingTool === "partial-eraser")) {
+      // Reset eraser state
+      setCurrentDrawing(null);
+      setDrawingStart(null);
+      setDrawingCurrent(null);
+      setDrawingPath([]);
+      setEraserPath([]);
+      return;
+    }
+    
     // Finalize drawing
     if (isDrawingMode && currentDrawing && drawingStart && drawingCurrent && onDrawingAdd) {
       console.log('Drawing ended:', { drawingStart, drawingCurrent, tool: selectedDrawingTool });
@@ -276,6 +422,7 @@ export function MapCanvas({
       setDrawingStart(null);
       setDrawingCurrent(null);
       setDrawingPath([]);
+      setEraserPath([]);
       return;
     }
     
@@ -285,7 +432,7 @@ export function MapCanvas({
     if (isSelecting) {
       setIsSelecting(false);
       
-      // Calculate selection bounds in canvas coordinates
+      // Calculate selection bounds in viewport coordinates
       const minX = Math.min(selectionStart.x, selectionEnd.x);
       const maxX = Math.max(selectionStart.x, selectionEnd.x);
       const minY = Math.min(selectionStart.y, selectionEnd.y);
@@ -294,10 +441,11 @@ export function MapCanvas({
       // Find icons within selection bounds
       const selected = new Set<string>();
       icons.forEach(icon => {
-        // Convert icon position (percentage) to viewport pixels
-        if (!canvasRef.current) return;
-        const rect = canvasRef.current.getBoundingClientRect();
-        // Icon position formula: (percentage / 100) * width * zoom + pan
+        // Convert icon position (percentage) to viewport pixels relative to container
+        if (!containerRef.current) return;
+        const rect = containerRef.current.getBoundingClientRect();
+        // Icon position formula: (percentage / 100) * canvas_width * zoom + pan
+        // Canvas is the size of the container
         const iconX = (icon.position.x / 100) * rect.width * zoom + pan.x;
         const iconY = (icon.position.y / 100) * rect.height * zoom + pan.y;
         
@@ -561,6 +709,40 @@ export function MapCanvas({
     onConnectorMoveComplete?.(updatedConnectors);
   };
 
+  // Text handlers
+  const handleTextMove = (id: string, position: { x: number; y: number }) => {
+    if (!onTextsChange) return;
+    const updatedTexts = texts.map((text) =>
+      text.id === id ? { ...text, position } : text
+    );
+    onTextsChange(updatedTexts);
+  };
+
+  const handleTextMoveComplete = (id: string, position: { x: number; y: number }) => {
+    if (!onTextMoveComplete) return;
+    const updatedTexts = texts.map((text) =>
+      text.id === id ? { ...text, position } : text
+    );
+    onTextMoveComplete(updatedTexts);
+    // Reset text dragging flag
+    setIsDraggingText(false);
+  };
+
+  const handleTextClick = (textId: string) => {
+    // Text selection logic - similar to icons
+    if (selectedTextIds.has(textId)) {
+      setSelectedTextIds(new Set());
+      onTextSelectionChange?.(null);
+    } else {
+      setSelectedTextIds(new Set([textId]));
+      onTextSelectionChange?.(textId);
+    }
+  };
+
+  const handleTextDragStart = () => {
+    setIsDraggingText(true);
+  };
+
   const handleConnectorDelete = (id: string) => {
     if (!onConnectorsChange) return;
 
@@ -633,28 +815,42 @@ export function MapCanvas({
   }, [selectedIconIds, icons]);
 
   const handleDeleteSelected = useCallback(() => {
-    if (selectedIconIds.size === 0) return;
+    let deletedCount = 0;
     
-    // Delete all selected icons
-    const updatedIcons = icons.filter(icon => !selectedIconIds.has(icon.id));
-    
-    // Also delete any connectors attached to the deleted icons
-    const updatedConnectors = connectors.filter(
-      connector => !selectedIconIds.has(connector.startIconId) && !selectedIconIds.has(connector.endIconId)
-    );
-    
-    onIconsChange(updatedIcons);
-    onIconMoveComplete?.(updatedIcons); // Save to history
-    
-    if (onConnectorsChange && onConnectorMoveComplete) {
-      onConnectorsChange(updatedConnectors);
-      onConnectorMoveComplete(updatedConnectors); // Save to history
+    // Delete selected icons
+    if (selectedIconIds.size > 0) {
+      const updatedIcons = icons.filter(icon => !selectedIconIds.has(icon.id));
+      
+      // Also delete any connectors attached to the deleted icons
+      const updatedConnectors = connectors.filter(
+        connector => !selectedIconIds.has(connector.startIconId) && !selectedIconIds.has(connector.endIconId)
+      );
+      
+      onIconsChange(updatedIcons);
+      onIconMoveComplete?.(updatedIcons); // Save to history
+      
+      if (onConnectorsChange && onConnectorMoveComplete) {
+        onConnectorsChange(updatedConnectors);
+        onConnectorMoveComplete(updatedConnectors); // Save to history
+      }
+      
+      deletedCount = selectedIconIds.size;
+      setSelectedIconIds(new Set());
+      toast.success(`${deletedCount} icon${deletedCount !== 1 ? 's' : ''} deleted`);
     }
     
-    const count = selectedIconIds.size;
-    setSelectedIconIds(new Set());
-    toast.success(`${count} icon${count !== 1 ? 's' : ''} deleted`);
-  }, [selectedIconIds, icons, connectors, onIconsChange, onIconMoveComplete, onConnectorsChange, onConnectorMoveComplete]);
+    // Delete selected text
+    if (selectedTextIds.size > 0 && onTextsChange && onTextMoveComplete) {
+      const updatedTexts = texts.filter(text => !selectedTextIds.has(text.id));
+      onTextsChange(updatedTexts);
+      onTextMoveComplete(updatedTexts); // Save to history
+      
+      deletedCount = selectedTextIds.size;
+      setSelectedTextIds(new Set());
+      onTextSelectionChange?.(null);
+      toast.success(`${deletedCount} text item${deletedCount !== 1 ? 's' : ''} deleted`);
+    }
+  }, [selectedIconIds, selectedTextIds, icons, texts, connectors, onIconsChange, onIconMoveComplete, onTextsChange, onTextMoveComplete, onConnectorsChange, onConnectorMoveComplete, onTextSelectionChange]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -871,7 +1067,7 @@ export function MapCanvas({
           <img
             src={mapImageUrl}
             alt="Campus Map"
-            className="w-full h-full object-fill pointer-events-none select-none"
+            className="w-full h-full object-contain pointer-events-none select-none"
             draggable={false}
           />
 
@@ -1144,6 +1340,32 @@ export function MapCanvas({
                     })()}
                   </>
                 )}
+                {(selectedDrawingTool === "eraser" || selectedDrawingTool === "partial-eraser") && eraserPath.length > 0 && (
+                  <g>
+                    {/* Eraser trail - show the path */}
+                    <path
+                      d={eraserPath.map((point, i) => `${i === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}
+                      stroke="#ff0000"
+                      strokeWidth={(strokeWidth * 2) / zoom}
+                      fill="none"
+                      opacity={0.3}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    {/* Eraser cursor - circle at current position */}
+                    {drawingCurrent && (
+                      <circle
+                        cx={drawingCurrent.x}
+                        cy={drawingCurrent.y}
+                        r={(strokeWidth * 2) / zoom}
+                        stroke="#ff0000"
+                        strokeWidth={0.5 / zoom}
+                        fill="rgba(255, 0, 0, 0.1)"
+                        opacity={0.5}
+                      />
+                    )}
+                  </g>
+                )}
               </>
             )}
           </svg>
@@ -1167,6 +1389,26 @@ export function MapCanvas({
                 isConnectMode={isConnectMode}
                 isConnectStart={connectStartIconId === icon.id}
                 isSelected={selectedIconIds.has(icon.id)}
+                isDrawingMode={isDrawingMode}
+              />
+            );
+          })}
+
+          {/* Text Elements */}
+          {visibleTexts.map((text, index) => {
+            // Calculate z-index for texts - start after icons
+            const textZIndex = 10 + visibleIcons.length + index;
+            
+            return (
+              <MapTextComponent
+                key={text.id}
+                text={text}
+                zIndex={textZIndex}
+                onMove={handleTextMove}
+                onMoveComplete={handleTextMoveComplete}
+                onClick={handleTextClick}
+                onDragStart={handleTextDragStart}
+                isSelected={selectedTextIds.has(text.id)}
                 isDrawingMode={isDrawingMode}
               />
             );

@@ -151,10 +151,11 @@ export function IconOptionsPanel({
             className="h-8 w-16 p-1 cursor-pointer"
           />
           <Input
-            value={selectedIcon.color || "#3b82f6"}
-            onChange={(e) => onUpdate({ color: e.target.value })}
+            defaultValue={selectedIcon.color || "#3b82f6"}
+            onBlur={(e) => onUpdate({ color: e.target.value })}
             className="h-8 text-sm flex-1"
             placeholder="#3b82f6"
+            key={`color-${selectedIcon.id}`}
           />
         </div>
       </div>
@@ -170,7 +171,7 @@ export function IconOptionsPanel({
         </div>
         <Slider
           value={[currentSize]}
-          onValueChange={(values: number[]) => onUpdate({ size: values[0] })}
+          onValueCommit={(values: number[]) => onUpdate({ size: values[0] })}
           min={0.5}
           max={3}
           step={0.1}
@@ -223,7 +224,7 @@ export function IconOptionsPanel({
         </div>
         <Slider
           value={[currentRotation]}
-          onValueChange={(values: number[]) => onUpdate({ rotation: values[0] })}
+          onValueCommit={(values: number[]) => onUpdate({ rotation: values[0] })}
           min={0}
           max={360}
           step={15}
@@ -273,10 +274,11 @@ export function IconOptionsPanel({
         </Label>
         <textarea
           id="icon-description"
-          value={selectedIcon.description || ""}
-          onChange={(e) => onUpdate({ description: e.target.value })}
+          defaultValue={selectedIcon.description || ""}
+          onBlur={(e) => onUpdate({ description: e.target.value })}
           placeholder="Add notes or description..."
           className="w-full h-20 px-3 py-2 text-sm rounded-md border border-input bg-background resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+          key={selectedIcon.id}
         />
       </div>
 

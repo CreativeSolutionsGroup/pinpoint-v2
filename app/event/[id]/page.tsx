@@ -6,13 +6,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TabsContent } from "@radix-ui/react-tabs";
 import { Plus, Search, Pencil, Check } from "lucide-react";
 import { MapEditor } from "@/components/map";
-import type { MapIconType, Connector, Layer, Drawing } from "@/components/map";
+import type { MapIconType, Connector, Layer, Drawing, TextElement } from "@/components/map";
 import { useState } from "react";
 
 interface MapState {
   icons: MapIconType[];
   connectors: Connector[];
   drawings: Drawing[];
+  texts: TextElement[];
 }
 
 export default function EventPage() {
@@ -32,23 +33,28 @@ export default function EventPage() {
   const [map2CurrentLayer, setMap2CurrentLayer] = useState<string>("default");
   const [map1Drawings, setMap1Drawings] = useState<Drawing[]>([]);
   const [map2Drawings, setMap2Drawings] = useState<Drawing[]>([]);
+  const [map1Texts, setMap1Texts] = useState<TextElement[]>([]);
+  const [map2Texts, setMap2Texts] = useState<TextElement[]>([]);
   const [history, setHistory] = useState<MapState[]>([{ 
     icons: [], 
     connectors: [],
-    drawings: []
+    drawings: [],
+    texts: []
   }]);
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [forceUpdate, setForceUpdate] = useState(0);
   const [activeTab, setActiveTab] = useState("location-1");
+  const [showLayers, setShowLayers] = useState<boolean>(true);
 
   const setCurrentIcons = activeTab === "location-1" ? setMap1Icons : setMap2Icons;
   const setCurrentConnectors = activeTab === "location-1" ? setMap1Connectors : setMap2Connectors;
   const setCurrentLayers = activeTab === "location-1" ? setMap1Layers : setMap2Layers;
   const setCurrentCurrentLayer = activeTab === "location-1" ? setMap1CurrentLayer : setMap2CurrentLayer;
   const setCurrentDrawings = activeTab === "location-1" ? setMap1Drawings : setMap2Drawings;
+  const setCurrentTexts = activeTab === "location-1" ? setMap1Texts : setMap2Texts;
   const currentIcons = activeTab === "location-1" ? map1Icons : map2Icons;
   const currentConnectors = activeTab === "location-1" ? map1Connectors : map2Connectors;
   const currentDrawings = activeTab === "location-1" ? map1Drawings : map2Drawings;
+  const currentTexts = activeTab === "location-1" ? map1Texts : map2Texts;
 
   // Live update handler - updates display but doesn't add to history
   const handleIconsChange = (newIcons: MapIconType[]) => {
@@ -72,7 +78,8 @@ export default function EventPage() {
     const newState: MapState = { 
       icons: newIcons, 
       connectors: currentConnectors,
-      drawings: currentDrawings
+      drawings: currentDrawings,
+      texts: currentTexts
     };
     saveToHistory(newState);
   };
@@ -82,7 +89,8 @@ export default function EventPage() {
     const newState: MapState = { 
       icons: currentIcons, 
       connectors: newConnectors,
-      drawings: currentDrawings
+      drawings: currentDrawings,
+      texts: currentTexts
     };
     saveToHistory(newState);
   };
@@ -93,7 +101,23 @@ export default function EventPage() {
     const newState: MapState = { 
       icons: currentIcons, 
       connectors: currentConnectors,
-      drawings: newDrawings
+      drawings: newDrawings,
+      texts: currentTexts
+    };
+    saveToHistory(newState);
+  };
+
+  // Text change handlers
+  const handleTextsChange = (newTexts: TextElement[]) => {
+    setCurrentTexts(newTexts);
+  };
+
+  const handleTextMoveComplete = (newTexts: TextElement[]) => {
+    const newState: MapState = { 
+      icons: currentIcons, 
+      connectors: currentConnectors,
+      drawings: currentDrawings,
+      texts: newTexts
     };
     saveToHistory(newState);
   };
@@ -108,6 +132,7 @@ export default function EventPage() {
     setCurrentIcons(newState.icons);
     setCurrentConnectors(newState.connectors);
     setCurrentDrawings(newState.drawings);
+    setCurrentTexts(newState.texts);
     
     // Add to history for undo/redo
     const newHistory = history.slice(0, historyIndex + 1);
@@ -124,7 +149,7 @@ export default function EventPage() {
       setCurrentIcons(state.icons);
       setCurrentConnectors(state.connectors);
       setCurrentDrawings(state.drawings);
-      setForceUpdate(prev => prev + 1); // Force re-render
+      setCurrentTexts(state.texts);
     }
   };
 
@@ -136,7 +161,7 @@ export default function EventPage() {
       setCurrentIcons(state.icons);
       setCurrentConnectors(state.connectors);
       setCurrentDrawings(state.drawings);
-      setForceUpdate(prev => prev + 1); // Force re-render
+      setCurrentTexts(state.texts);
     }
   };
 
@@ -185,13 +210,16 @@ export default function EventPage() {
           <div className="flex-1 min-h-0 overflow-hidden">
             <TabsContent value="location-1" className="h-full mt-0">
               <MapEditor
-                key={`map-1-${forceUpdate}`}
+                key="map-1"
                 mapImageUrl="/maps/Campus.png"
                 initialIcons={map1Icons}
                 initialConnectors={map1Connectors}
                 initialLayers={map1Layers}
                 initialCurrentLayer={map1CurrentLayer}
                 initialDrawings={map1Drawings}
+                initialTexts={map1Texts}
+                showLayers={showLayers}
+                onShowLayersChange={setShowLayers}
                 onIconsChange={handleIconsChange}
                 onConnectorsChange={handleConnectorsChange}
                 onLayersChange={handleLayersChange}
@@ -199,6 +227,8 @@ export default function EventPage() {
                 onIconMoveComplete={handleIconMoveComplete}
                 onConnectorMoveComplete={handleConnectorMoveComplete}
                 onDrawingsChange={handleDrawingsChange}
+                onTextsChange={handleTextsChange}
+                onTextMoveComplete={handleTextMoveComplete}
                 onUndo={handleUndo}
                 onRedo={handleRedo}
                 canUndo={historyIndex > 0}
@@ -207,13 +237,16 @@ export default function EventPage() {
             </TabsContent>
             <TabsContent value="location-2" className="h-full mt-0">
               <MapEditor
-                key={`map-2-${forceUpdate}`}
+                key="map-2"
                 mapImageUrl="/maps/Campus.png"
                 initialIcons={map2Icons}
                 initialConnectors={map2Connectors}
                 initialLayers={map2Layers}
                 initialCurrentLayer={map2CurrentLayer}
                 initialDrawings={map2Drawings}
+                initialTexts={map2Texts}
+                showLayers={showLayers}
+                onShowLayersChange={setShowLayers}
                 onIconsChange={handleIconsChange}
                 onConnectorsChange={handleConnectorsChange}
                 onLayersChange={handleLayersChange}
@@ -221,6 +254,8 @@ export default function EventPage() {
                 onIconMoveComplete={handleIconMoveComplete}
                 onConnectorMoveComplete={handleConnectorMoveComplete}
                 onDrawingsChange={handleDrawingsChange}
+                onTextsChange={handleTextsChange}
+                onTextMoveComplete={handleTextMoveComplete}
                 onUndo={handleUndo}
                 onRedo={handleRedo}
                 canUndo={historyIndex > 0}

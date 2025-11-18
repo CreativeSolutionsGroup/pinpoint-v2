@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { MapCanvas } from "./map-canvas";
 import { IconPalette } from "./icon-palette";
 import { SidebarPanel } from "./sidebar-panel";
-import { MapIcon, IconType, Connector, Layer, Drawing, DrawingTool } from "./types";
+import { MapIcon, IconType, Connector, Layer, Drawing, DrawingTool, TextElement } from "./types";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Download, Upload, ChevronLeft, ChevronRight } from "lucide-react";
@@ -93,7 +93,10 @@ interface MapEditorProps {
   initialLayers?: Layer[];
   initialCurrentLayer?: string;
   initialDrawings?: Drawing[];
+  initialTexts?: TextElement[];
   availableIconTypes?: IconType[];
+  showLayers?: boolean;
+  onShowLayersChange?: (showLayers: boolean) => void;
   onIconsChange?: (icons: MapIcon[]) => void;
   onConnectorsChange?: (connectors: Connector[]) => void;
   onLayersChange?: (layers: Layer[]) => void;
@@ -101,6 +104,8 @@ interface MapEditorProps {
   onIconMoveComplete?: (icons: MapIcon[]) => void;
   onConnectorMoveComplete?: (connectors: Connector[]) => void;
   onDrawingsChange?: (drawings: Drawing[]) => void;
+  onTextsChange?: (texts: TextElement[]) => void;
+  onTextMoveComplete?: (texts: TextElement[]) => void;
   onUndo?: () => void;
   onRedo?: () => void;
   canUndo?: boolean;
@@ -114,7 +119,10 @@ export function MapEditor({
   initialLayers = [{ id: "default", name: "Default", visible: true, locked: false }],
   initialCurrentLayer = "default",
   initialDrawings = [],
+  initialTexts = [],
   availableIconTypes = DEFAULT_ICON_TYPES,
+  showLayers: externalShowLayers,
+  onShowLayersChange,
   onIconsChange,
   onConnectorsChange,
   onLayersChange,
@@ -122,6 +130,8 @@ export function MapEditor({
   onIconMoveComplete,
   onConnectorMoveComplete,
   onDrawingsChange,
+  onTextsChange,
+  onTextMoveComplete,
   onUndo,
   onRedo,
   canUndo = false,
@@ -132,7 +142,12 @@ export function MapEditor({
   const [layers, setLayers] = useState<Layer[]>(initialLayers);
   const [currentLayer, setCurrentLayer] = useState<string>(initialCurrentLayer);
   const [selectedIconIds, setSelectedIconIds] = useState<Set<string>>(new Set());
-  const [showLayers, setShowLayers] = useState<boolean>(true);
+  const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [internalShowLayers, setInternalShowLayers] = useState<boolean>(true);
+  
+  // Use external state if provided, otherwise use internal state
+  const showLayers = externalShowLayers !== undefined ? externalShowLayers : internalShowLayers;
+  const setShowLayers = onShowLayersChange || setInternalShowLayers;
   const [layersPanelWidth, setLayersPanelWidth] = useState<number>(224); // Default w-56 = 224px
   const [isResizing, setIsResizing] = useState<boolean>(false);
   const resizeStartRef = useRef<{ width: number; mouseX: number }>({ width: 224, mouseX: 0 });
@@ -140,6 +155,7 @@ export function MapEditor({
 
   // Drawing state
   const [drawings, setDrawings] = useState<Drawing[]>(initialDrawings);
+  const [texts, setTexts] = useState<TextElement[]>(initialTexts);
   const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
   const [selectedDrawingTool, setSelectedDrawingTool] = useState<DrawingTool>("pen");
   const [drawingColor, setDrawingColor] = useState<string>("#000000");
@@ -153,6 +169,7 @@ export function MapEditor({
   const initialConnectorsJson = JSON.stringify(initialConnectors);
   const initialLayersJson = JSON.stringify(initialLayers);
   const initialDrawingsJson = JSON.stringify(initialDrawings);
+  const initialTextsJson = JSON.stringify(initialTexts);
 
   useEffect(() => {
     setIcons(initialIcons);
@@ -178,9 +195,19 @@ export function MapEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDrawingsJson]);
 
+  useEffect(() => {
+    setTexts(initialTexts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTextsJson]);
+
   // Get the first selected icon (for single selection)
   const selectedIcon = selectedIconIds.size === 1 
     ? icons.find(icon => selectedIconIds.has(icon.id)) || null
+    : null;
+
+  // Get the selected text
+  const selectedText = selectedTextId
+    ? texts.find(text => text.id === selectedTextId) || null
     : null;
 
   // Constants for resize limits
@@ -403,6 +430,48 @@ export function MapEditor({
     onDrawingsChange?.([]);
   };
 
+  const handleDrawingsChange = (newDrawings: Drawing[]) => {
+    setDrawings(newDrawings);
+    onDrawingsChange?.(newDrawings);
+  };
+
+  // Text handlers
+  const handleTextsChange = (newTexts: TextElement[]) => {
+    setTexts(newTexts);
+    onTextsChange?.(newTexts);
+  };
+
+  const handleTextMoveComplete = (newTexts: TextElement[]) => {
+    setTexts(newTexts);
+    onTextMoveComplete?.(newTexts);
+  };
+
+  const handleTextAdd = (text: TextElement) => {
+    const newTexts = [...texts, text];
+    handleTextsChange(newTexts);
+    handleTextMoveComplete(newTexts);
+    setSelectedTextId(text.id); // Select the newly added text
+    toast.success("Text added to canvas");
+  };
+
+  const handleTextUpdate = (updates: Partial<TextElement>) => {
+    if (!selectedText) return;
+    const updatedTexts = texts.map(text =>
+      text.id === selectedText.id ? { ...text, ...updates } : text
+    );
+    handleTextsChange(updatedTexts);
+    handleTextMoveComplete(updatedTexts);
+  };
+
+  const handleTextDelete = () => {
+    if (!selectedText) return;
+    const updatedTexts = texts.filter(text => text.id !== selectedText.id);
+    handleTextsChange(updatedTexts);
+    handleTextMoveComplete(updatedTexts);
+    setSelectedTextId(null); // Clear selection after delete
+    toast.success("Text deleted");
+  };
+
   const handleDrawingModeToggle = () => {
     setIsDrawingMode(!isDrawingMode);
     if (!isDrawingMode) {
@@ -481,6 +550,11 @@ export function MapEditor({
           fillColor={fillColor}
           enableFill={enableFill}
           onDrawingAdd={handleDrawingAdd}
+          onDrawingsChange={handleDrawingsChange}
+          texts={texts}
+          onTextsChange={handleTextsChange}
+          onTextMoveComplete={handleTextMoveComplete}
+          onTextSelectionChange={setSelectedTextId}
         />
       </div>
 
@@ -533,6 +607,11 @@ export function MapEditor({
               onGroupUpdate={handleGroupUpdate}
               onIconDelete={handleIconDelete}
               onGroupDelete={handleGroupDelete}
+              texts={texts}
+              selectedText={selectedText}
+              onTextAdd={handleTextAdd}
+              onTextUpdate={handleTextUpdate}
+              onTextDelete={handleTextDelete}
               drawings={drawings}
               selectedDrawingTool={selectedDrawingTool}
               onDrawingToolChange={setSelectedDrawingTool}

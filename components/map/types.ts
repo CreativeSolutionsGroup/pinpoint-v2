@@ -16,6 +16,17 @@ export interface MapIcon {
   layer?: string; // Layer name (default "default")
 }
 
+export interface TextElement {
+  id: string;
+  text: string;
+  position: Position;
+  color?: string;
+  rotation?: number; // 0-360 degrees
+  size?: number; // 1-3 scale multiplier (default 1)
+  fontSize?: number; // Base font size in pixels (default 16)
+  layer?: string; // Layer name (default "default")
+}
+
 export interface Layer {
   id: string;
   name: string;
@@ -44,7 +55,7 @@ export interface Connector {
   description?: string;
 }
 
-export type DrawingTool = "pen" | "line" | "rectangle" | "circle" | "ellipse" | "arrow" | "text";
+export type DrawingTool = "pen" | "line" | "rectangle" | "circle" | "ellipse" | "arrow" | "eraser" | "partial-eraser";
 
 export interface DrawingPath {
   points: Position[]; // For pen tool
@@ -78,6 +89,7 @@ export interface MapData {
   name: string;
   imageUrl: string;
   icons: MapIcon[];
+  texts?: TextElement[];
   connectors?: Connector[];
   drawings?: Drawing[];
 }
